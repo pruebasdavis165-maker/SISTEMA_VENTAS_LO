@@ -4,6 +4,7 @@ import { AdminLayout } from './components/layout/AdminLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { ZonasPage } from './pages/ZonasPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { useAuthStore } from './store/useAuthStore';
 
@@ -34,7 +35,7 @@ export const App: React.FC = () => {
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<AdminLayout />}>
             <Route index element={<DashboardPage />} />
-            <Route path="zonas" element={<PlaceholderPage title="Gestión de Zonas y Parámetros (CU01)" milestone="Milestone 2" />} />
+            <Route path="zonas" element={<ZonasPage />} />
             <Route path="vendedores" element={<PlaceholderPage title="Gestión de Vendedores y Saldo (CU02)" milestone="Milestone 2" />} />
             <Route path="sorteos" element={<PlaceholderPage title="Programación de Sorteos (CU03)" milestone="Milestone 2" />} />
             <Route path="riesgo" element={<PlaceholderPage title="Cuadrícula 00-99 y Bloqueos de Riesgo (CU04)" milestone="Milestone 2" />} />
