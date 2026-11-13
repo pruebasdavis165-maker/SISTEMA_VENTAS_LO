@@ -9,7 +9,7 @@ import { VendedoresPage } from './pages/VendedoresPage';
 import { SorteosPage } from './pages/SorteosPage';
 import { CuadriculaRiesgoPage } from './pages/CuadriculaRiesgoPage';
 import { LiquidacionPage } from './pages/LiquidacionPage';
-import { PlaceholderPage } from './pages/PlaceholderPage';
+import { AuditoriaBoletosPage } from './pages/AuditoriaBoletosPage';
 import { useAuthStore } from './store/useAuthStore';
 
 // Guardia de ruta pública para usuarios ya autenticados
@@ -44,7 +44,7 @@ export const App: React.FC = () => {
             <Route path="sorteos" element={<SorteosPage />} />
             <Route path="riesgo" element={<CuadriculaRiesgoPage />} />
             <Route path="liquidacion" element={<LiquidacionPage />} />
-            <Route path="auditoria" element={<PlaceholderPage title="Auditoría de Boletos y Reimpresiones (CU06)" milestone="Milestone 2" />} />
+            <Route path="auditoria" element={<AuditoriaBoletosPage />} />
           </Route>
         </Route>
 
