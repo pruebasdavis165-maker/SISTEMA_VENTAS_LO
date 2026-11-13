@@ -6,6 +6,7 @@ import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ZonasPage } from './pages/ZonasPage';
 import { VendedoresPage } from './pages/VendedoresPage';
+import { SorteosPage } from './pages/SorteosPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { useAuthStore } from './store/useAuthStore';
 
@@ -38,7 +39,7 @@ export const App: React.FC = () => {
             <Route index element={<DashboardPage />} />
             <Route path="zonas" element={<ZonasPage />} />
             <Route path="vendedores" element={<VendedoresPage />} />
-            <Route path="sorteos" element={<PlaceholderPage title="Programación de Sorteos (CU03)" milestone="Milestone 2" />} />
+            <Route path="sorteos" element={<SorteosPage />} />
             <Route path="riesgo" element={<PlaceholderPage title="Cuadrícula 00-99 y Bloqueos de Riesgo (CU04)" milestone="Milestone 2" />} />
             <Route path="liquidacion" element={<PlaceholderPage title="Cierre y Liquidación de Sorteos (CU05)" milestone="Milestone 2" />} />
             <Route path="auditoria" element={<PlaceholderPage title="Auditoría de Boletos y Reimpresiones (CU06)" milestone="Milestone 2" />} />
