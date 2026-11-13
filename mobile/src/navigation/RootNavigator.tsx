@@ -6,7 +6,7 @@ import { HomeScreen } from '../features/home/HomeScreen';
 import { VentaRapidaScreen } from '../features/pos/VentaRapidaScreen';
 import { ConfirmarVentaScreen } from '../features/pos/ConfirmarVentaScreen';
 import { HistorialScreen } from '../features/historial/HistorialScreen';
-import { PlaceholderScreen } from '../features/placeholder/PlaceholderScreen';
+import { ImpresoraScreen } from '../features/hardware/ImpresoraScreen';
 import { COLORS } from '../theme/colors';
 import { useAppStore } from '../store/appStore';
 
@@ -42,14 +42,7 @@ export const RootNavigator: React.FC = () => {
             <Stack.Screen name="VentaRapida" component={VentaRapidaScreen} />
             <Stack.Screen name="ConfirmarVenta" component={ConfirmarVentaScreen} />
             <Stack.Screen name="Historial" component={HistorialScreen} />
-            <Stack.Screen
-              name="Impresora"
-              component={PlaceholderScreen}
-              initialParams={{
-                title: 'Impresora Bluetooth',
-                desc: 'Emparejamiento y conexión térmica (Issue #40)',
-              }}
-            />
+            <Stack.Screen name="Impresora" component={ImpresoraScreen} />
           </>
         )}
       </Stack.Navigator>
