@@ -15,6 +15,8 @@ import { useAppStore } from '../../store/appStore';
 import { RootStackParamList } from '../../navigation/RootNavigator';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { api } from '../../api/client';
+import { bluetoothService } from '../../services/bluetoothService';
+import { EscPosEncoder } from '../../services/escPosEncoder';
 import { BoletoEmitido, SorteoActivo } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ConfirmarVenta'>;
@@ -119,6 +121,27 @@ export const ConfirmarVentaScreen: React.FC = () => {
           premioCalculado: item.premioCalculado,
         })),
       });
+
+      // Disparo automático a la mini-impresora Bluetooth si está emparejada (Hardware Invisible)
+      if (bluetoothService.isConnected()) {
+        const escPosPayload = EscPosEncoder.generarTicket({
+          numeroBoleto: data.numeroBoleto,
+          codigoValidacion: data.codigoValidacion,
+          sorteoCodigo: data.codigoSorteo,
+          fechaEmision: data.fechaEmision,
+          nombreZona: user?.nombreZona,
+          nombreVendedor: user ? `${user.nombres} ${user.apellidos}` : undefined,
+          marcaAguaCopia: null, // Original sin marca
+          totalApostado: data.totalApostado,
+          totalPremioEstimado: data.totalPremioEstimado,
+          jugadas: data.jugadas.map((item: any) => ({
+            numero: item.numero,
+            monto: item.monto,
+            premioCalculado: item.premioCalculado,
+          })),
+        });
+        await bluetoothService.printEscPos(escPosPayload);
+      }
 
       limpiarCarrito();
     } catch (err: any) {

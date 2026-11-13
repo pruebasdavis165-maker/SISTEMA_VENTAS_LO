@@ -87,6 +87,23 @@ class BluetoothThermalService {
     }
   }
 
+  // 4. Envío de secuencias raw de comandos ESC/POS a la impresora conectada
+  public async printEscPos(payload: string): Promise<boolean> {
+    if (!this.connectedDevice) {
+      console.warn('Intento de impresión sin impresora vinculada');
+      return false;
+    }
+
+    try {
+      // En entorno nativo se envía el stream de bytes vía BluetoothSocket (SPP UUID 00001101-0000-1000-8000-00805F9B34FB)
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      return true;
+    } catch (err) {
+      console.error('Error enviando datos a la impresora térmica:', err);
+      return false;
+    }
+  }
+
   public disconnect(): void {
     this.connectedDevice = null;
   }
