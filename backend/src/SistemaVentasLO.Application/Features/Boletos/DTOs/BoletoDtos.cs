@@ -43,3 +43,5 @@ public record EmitirBoletoRequestDto(
     long SorteoId,
     List<ItemJugadaDto> Jugadas
 );
+
+public record AnularBoletoRequestDto(string? Motivo);
