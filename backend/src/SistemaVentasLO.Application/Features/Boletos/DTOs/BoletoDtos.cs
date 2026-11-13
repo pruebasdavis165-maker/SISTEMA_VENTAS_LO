@@ -36,3 +36,10 @@ public record ReimprimirBoletoResponse(
     string MarcaAguaCopia, // Ej: "COPIA 1", "COPIA 2"
     DateTime FechaReimpresion
 );
+
+public record ItemJugadaDto(string Numero, decimal Monto);
+
+public record EmitirBoletoRequestDto(
+    long SorteoId,
+    List<ItemJugadaDto> Jugadas
+);
