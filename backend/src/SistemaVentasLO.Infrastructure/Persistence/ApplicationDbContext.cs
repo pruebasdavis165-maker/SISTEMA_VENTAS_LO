@@ -95,6 +95,16 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             entity.Property(e => e.Monto).HasPrecision(12, 2);
             entity.Property(e => e.SaldoAnterior).HasPrecision(12, 2);
             entity.Property(e => e.SaldoPosterior).HasPrecision(12, 2);
+
+            entity.HasOne(e => e.Vendedor)
+                .WithMany(u => u.Transacciones)
+                .HasForeignKey(e => e.VendedorId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Operador)
+                .WithMany()
+                .HasForeignKey(e => e.OperadorId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Liquidacion>(entity =>
