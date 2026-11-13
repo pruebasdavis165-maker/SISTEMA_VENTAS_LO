@@ -3,11 +3,21 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { HomeScreen } from '../features/home/HomeScreen';
+import { VentaRapidaScreen } from '../features/pos/VentaRapidaScreen';
 import { PlaceholderScreen } from '../features/placeholder/PlaceholderScreen';
 import { COLORS } from '../theme/colors';
 import { useAppStore } from '../store/appStore';
 
-const Stack = createNativeStackNavigator();
+export type RootStackParamList = {
+  Login: undefined;
+  Home: undefined;
+  VentaRapida: undefined;
+  ConfirmarVenta: { title?: string; desc?: string } | undefined;
+  Historial: { title?: string; desc?: string } | undefined;
+  Impresora: { title?: string; desc?: string } | undefined;
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const RootNavigator: React.FC = () => {
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
@@ -27,12 +37,13 @@ export const RootNavigator: React.FC = () => {
         ) : (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="VentaRapida" component={VentaRapidaScreen} />
             <Stack.Screen
-              name="VentaRapida"
+              name="ConfirmarVenta"
               component={PlaceholderScreen}
               initialParams={{
-                title: 'Punto de Venta Rápido',
-                desc: 'Teclado numérico táctil y carrito (Issue #37)',
+                title: 'Confirmar Transacción',
+                desc: 'Emisión de Boleto y Sorteo Activo (Issue #38)',
               }}
             />
             <Stack.Screen
