@@ -12,6 +12,7 @@ services:
       POSTGRES_PASSWORD: ${PROD_POSTGRES_PASSWORD}
     volumes:
       - postgres_prod_data:/var/lib/postgresql/data
+      - ./infra/db/init-prod.sql:/docker-entrypoint-initdb.d/02-prod-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PROD_POSTGRES_USER} -d ${PROD_POSTGRES_DB}"]
       interval: 10s
