@@ -1,0 +1,66 @@
+name: sistema-ventas-lo-prod
+
+services:
+  # Base de Datos Relacional de Producción
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: lo-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_DB: ${PROD_POSTGRES_DB}
+      POSTGRES_USER: ${PROD_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${PROD_POSTGRES_PASSWORD}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PROD_POSTGRES_USER} -d ${PROD_POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lo-prod-internal-network
+    # Nota de Seguridad: En producción la BD NO expone puertos a Internet público, solo comunicación interna
+
+  # Backend Web API (.NET 8 Clean Architecture) - Producción
+  backend-api:
+    image: ${DOCKER_REGISTRY}/sistema-ventas-backend:${PROD_TAG:-latest}
+    container_name: lo-backend-prod
+    restart: always
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=postgres-db;Port=5432;Database=${PROD_POSTGRES_DB};Username=${PROD_POSTGRES_USER};Password=${PROD_POSTGRES_PASSWORD};SslMode=Prefer;
+      - JwtSettings__SecretKey=${PROD_JWT_SECRET_KEY}
+      - JwtSettings__Issuer=SistemaVentasLO_AuthServer
+      - JwtSettings__Audience=SistemaVentasLO_Clients
+      - JwtSettings__ExpirationMinutes=240
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    networks:
+      - lo-prod-internal-network
+      - lo-prod-public-network
+
+  # Frontend Web Admin (React + Vite + Nginx) - Producción
+  frontend-web:
+    image: ${DOCKER_REGISTRY}/sistema-ventas-frontend:${PROD_TAG:-latest}
+    container_name: lo-frontend-prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend-api
+    networks:
+      - lo-prod-public-network
+
+volumes:
+  postgres_prod_data:
+    name: lo_postgres_prod_data
+
+networks:
+  lo-prod-internal-network:
+    name: lo_prod_internal_network
+    internal: true
+  lo-prod-public-network:
+    name: lo_prod_public_network
+    driver: bridge
