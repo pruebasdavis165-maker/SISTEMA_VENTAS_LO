@@ -5,9 +5,11 @@ using SistemaVentasLO.Application.Features.Sorteos.Commands.CambiarEstadoSorteo;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.CrearSorteo;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.DesbloquearNumero;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.GenerarSorteosDia;
+using SistemaVentasLO.Application.Features.Sorteos.Commands.LiquidarSorteo;
 using SistemaVentasLO.Application.Features.Sorteos.DTOs;
 using SistemaVentasLO.Application.Features.Sorteos.Queries.ObtenerCuadriculaGlobal;
 using SistemaVentasLO.Application.Features.Sorteos.Queries.ObtenerHorarios;
+using SistemaVentasLO.Application.Features.Sorteos.Queries.ObtenerLiquidacionSorteo;
 using SistemaVentasLO.Application.Features.Sorteos.Queries.ObtenerProximoSorteo;
 using SistemaVentasLO.Application.Features.Sorteos.Queries.ObtenerSorteos;
 
@@ -126,5 +128,30 @@ public class SorteosController : ApiControllerBase
     {
         await Mediator.Send(new DesbloquearNumeroCommand(id, numero, alcance));
         return Ok(new { Mensaje = $"Número {numero} desbloqueado exitosamente." });
+    }
+
+    [HttpPost("{id:long}/liquidar")]
+    [Authorize(Roles = "ADMIN")]
+    [ProducesResponseType(typeof(LiquidacionSorteoDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> LiquidarSorteo(long id, [FromBody] LiquidarSorteoRequest request)
+    {
+        var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value 
+                      ?? User.FindFirst("sub")?.Value;
+        Guid.TryParse(idClaim, out var adminId);
+
+        var result = await Mediator.Send(new LiquidarSorteoCommand(id, request.NumeroGanador, adminId));
+        return Ok(result);
+    }
+
+    [HttpGet("{id:long}/liquidacion")]
+    [Authorize]
+    [ProducesResponseType(typeof(LiquidacionSorteoDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetLiquidacion(long id)
+    {
+        var result = await Mediator.Send(new ObtenerLiquidacionSorteoQuery(id));
+        return Ok(result);
     }
 }
