@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SistemaVentasLO.Application.Features.Sorteos.Commands.BloquearNumero;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.CambiarEstadoSorteo;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.CrearSorteo;
+using SistemaVentasLO.Application.Features.Sorteos.Commands.DesbloquearNumero;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.GenerarSorteosDia;
 using SistemaVentasLO.Application.Features.Sorteos.DTOs;
+using SistemaVentasLO.Application.Features.Sorteos.Queries.ObtenerCuadriculaGlobal;
 using SistemaVentasLO.Application.Features.Sorteos.Queries.ObtenerHorarios;
 using SistemaVentasLO.Application.Features.Sorteos.Queries.ObtenerProximoSorteo;
 using SistemaVentasLO.Application.Features.Sorteos.Queries.ObtenerSorteos;
@@ -77,5 +80,51 @@ public class SorteosController : ApiControllerBase
     {
         var result = await Mediator.Send(new CambiarEstadoSorteoCommand(id, request.Estado));
         return Ok(result);
+    }
+
+    [HttpGet("{id:long}/cuadricula-global")]
+    [Authorize]
+    [ProducesResponseType(typeof(CuadriculaRiesgoGlobalDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetCuadriculaGlobal(
+        long id,
+        [FromQuery] int? zonaId,
+        [FromQuery] Guid? vendedorId)
+    {
+        var result = await Mediator.Send(new ObtenerCuadriculaGlobalQuery(id, zonaId, vendedorId));
+        return Ok(result);
+    }
+
+    [HttpPost("{id:long}/bloquear-numero")]
+    [Authorize(Roles = "ADMIN")]
+    [ProducesResponseType(typeof(long), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> BloquearNumero(long id, [FromBody] BloquearNumeroRequest request)
+    {
+        var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value 
+                      ?? User.FindFirst("sub")?.Value;
+        Guid.TryParse(idClaim, out var adminId);
+
+        var result = await Mediator.Send(new BloquearNumeroCommand(
+            id,
+            request.Numero,
+            request.Alcance,
+            request.ZonaId,
+            request.VendedorId,
+            request.Motivo,
+            adminId
+        ));
+        return Ok(new { BloqueoId = result, Mensaje = $"Número {request.Numero} bloqueado exitosamente." });
+    }
+
+    [HttpDelete("{id:long}/desbloquear-numero/{numero}")]
+    [Authorize(Roles = "ADMIN")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DesbloquearNumero(long id, string numero, [FromQuery] string? alcance)
+    {
+        await Mediator.Send(new DesbloquearNumeroCommand(id, numero, alcance));
+        return Ok(new { Mensaje = $"Número {numero} desbloqueado exitosamente." });
     }
 }
