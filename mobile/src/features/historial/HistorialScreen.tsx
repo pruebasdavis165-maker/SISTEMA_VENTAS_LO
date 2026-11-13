@@ -14,6 +14,8 @@ import { COLORS } from '../../theme/colors';
 import { useAppStore } from '../../store/appStore';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { api } from '../../api/client';
+import { bluetoothService } from '../../services/bluetoothService';
+import { EscPosEncoder } from '../../services/escPosEncoder';
 
 interface JugadaHistorial {
   numero: string;
@@ -59,6 +61,45 @@ export const HistorialScreen: React.FC = () => {
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [boletoSeleccionado, setBoletoSeleccionado] = useState<BoletoHistorial | null>(null);
   const [anulando, setAnulando] = useState<boolean>(false);
+  const [reimprimiendo, setReimprimiendo] = useState<boolean>(false);
+
+  const handleReimprimirBoleto = async (boleto: BoletoHistorial) => {
+    try {
+      setReimprimiendo(true);
+      // 1. Notificación obligatoria al backend para incrementar copias y generar marca antifraude
+      const res = await api.post(`/boletos/${boleto.id}/reimprimir`);
+      const { marcaAguaCopia } = res.data;
+
+      // 2. Si hay impresora Bluetooth, emitir ticket térmico con la marca de agua
+      if (bluetoothService.isConnected()) {
+        const ticketPayload = EscPosEncoder.generarTicket({
+          numeroBoleto: boleto.numeroBoleto,
+          codigoValidacion: boleto.codigoValidacion,
+          sorteoCodigo: boleto.codigoSorteo,
+          fechaEmision: boleto.fechaEmision,
+          marcaAguaCopia: marcaAguaCopia, // Ej: "COPIA 1", "COPIA 2"
+          totalApostado: boleto.totalApostado,
+          totalPremioEstimado: boleto.totalPremioEstimado,
+          jugadas: boleto.jugadas,
+        });
+
+        await bluetoothService.printEscPos(ticketPayload);
+        Alert.alert('Reimpresión Exitosa', `Se imprimió el ticket con sello de seguridad '${marcaAguaCopia}'.`);
+      } else {
+        Alert.alert(
+          'Reimpresión Registrada',
+          `Se registró ${marcaAguaCopia} en el servidor. Conecta una impresora térmica para sacar la copia física.`
+        );
+      }
+
+      await cargarDatos();
+    } catch (err: any) {
+      const msg = err.response?.data?.message || 'Error al solicitar reimpresión.';
+      Alert.alert('Error', msg);
+    } finally {
+      setReimprimiendo(false);
+    }
+  };
 
   const cargarDatos = async () => {
     try {
@@ -310,6 +351,19 @@ export const HistorialScreen: React.FC = () => {
                     ${boletoSeleccionado.totalApostado.toFixed(2)}
                   </Text>
                 </View>
+
+                {/* Botón de Reimpresión Térmica Antifraude */}
+                <TouchableOpacity
+                  style={[styles.btnReimprimirBoleto, reimprimiendo && styles.btnDisabled]}
+                  onPress={() => handleReimprimirBoleto(boletoSeleccionado)}
+                  disabled={reimprimiendo}
+                >
+                  {reimprimiendo ? (
+                    <ActivityIndicator color={COLORS.white} />
+                  ) : (
+                    <Text style={styles.btnReimprimirBoletoText}>🖨️ REIMPRIMIR COPIA TÉRMICA</Text>
+                  )}
+                </TouchableOpacity>
 
                 {boletoSeleccionado.puedeAnularse && (
                   <TouchableOpacity
@@ -635,12 +689,24 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
   },
+  btnReimprimirBoleto: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  btnReimprimirBoletoText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '800',
+  },
   btnAnularBoleto: {
     backgroundColor: COLORS.danger,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 10,
   },
   btnDisabled: {
     opacity: 0.6,
