@@ -1,0 +1,84 @@
+name: sistema-ventas-lo
+
+services:
+  # Base de Datos Relacional - PostgreSQL 16
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: lo-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sistema_ventas_lo_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_dev_password_123}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sistema_ventas_lo_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lo-network
+
+  # Herramienta de Gestión de Base de Datos - pgAdmin 4
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: lo-pgadmin-dev
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@sistemaventaslo.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin_dev_password}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    networks:
+      - lo-network
+
+  # Backend Web API (.NET 8 Clean Architecture)
+  backend-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lo-backend-dev
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
+      - ConnectionStrings__DefaultConnection=Host=postgres-db;Port=5432;Database=${POSTGRES_DB:-sistema_ventas_lo_dev};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres_dev_password_123};
+      - JwtSettings__SecretKey=${JWT_SECRET_KEY:-clave_secreta_super_segura_para_desarrollo_staging_minimo_32_caracteres_lo_2026}
+      - JwtSettings__Issuer=${JWT_ISSUER:-SistemaVentasLO_AuthServer}
+      - JwtSettings__Audience=${JWT_AUDIENCE:-SistemaVentasLO_Clients}
+      - JwtSettings__ExpirationMinutes=${JWT_EXPIRATION_MINUTES:-480}
+    ports:
+      - "${API_PORT:-5000}:8080"
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    networks:
+      - lo-network
+
+  # Frontend Web Admin (React + Vite + Nginx)
+  frontend-web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lo-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend-api
+    networks:
+      - lo-network
+
+volumes:
+  postgres_dev_data:
+    name: lo_postgres_dev_data
+
+networks:
+  lo-network:
+    name: lo_network
+    driver: bridge
