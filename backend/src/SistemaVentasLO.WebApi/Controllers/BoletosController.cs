@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SistemaVentasLO.Application.Features.Boletos.Commands.EmitirBoleto;
 using SistemaVentasLO.Application.Features.Boletos.Commands.ReimprimirBoleto;
 using SistemaVentasLO.Application.Features.Boletos.DTOs;
 using SistemaVentasLO.Application.Features.Boletos.Queries.AuditoriaBoletos;
@@ -8,6 +9,29 @@ namespace SistemaVentasLO.WebApi.Controllers;
 
 public class BoletosController : ApiControllerBase
 {
+    [HttpPost("emitir")]
+    [Authorize]
+    [ProducesResponseType(typeof(BoletoEmitidoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Emitir([FromBody] EmitirBoletoRequestDto request)
+    {
+        var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value 
+                      ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(idClaim, out var vendedorId))
+        {
+            return Unauthorized(new { message = "Identidad de vendedor no válida." });
+        }
+
+        var result = await Mediator.Send(new EmitirBoletoCommand(
+            vendedorId,
+            request.SorteoId,
+            request.Jugadas.Select(j => new ItemJugadaRequest(j.Numero, j.Monto)).ToList()
+        ));
+
+        return Ok(result);
+    }
+
     [HttpGet("auditoria")]
     [Authorize]
     [ProducesResponseType(typeof(List<BoletoAuditoriaDto>), StatusCodes.Status200OK)]

@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { HomeScreen } from '../features/home/HomeScreen';
 import { VentaRapidaScreen } from '../features/pos/VentaRapidaScreen';
+import { ConfirmarVentaScreen } from '../features/pos/ConfirmarVentaScreen';
 import { PlaceholderScreen } from '../features/placeholder/PlaceholderScreen';
 import { COLORS } from '../theme/colors';
 import { useAppStore } from '../store/appStore';
@@ -38,14 +39,7 @@ export const RootNavigator: React.FC = () => {
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="VentaRapida" component={VentaRapidaScreen} />
-            <Stack.Screen
-              name="ConfirmarVenta"
-              component={PlaceholderScreen}
-              initialParams={{
-                title: 'Confirmar Transacción',
-                desc: 'Emisión de Boleto y Sorteo Activo (Issue #38)',
-              }}
-            />
+            <Stack.Screen name="ConfirmarVenta" component={ConfirmarVentaScreen} />
             <Stack.Screen
               name="Historial"
               component={PlaceholderScreen}
