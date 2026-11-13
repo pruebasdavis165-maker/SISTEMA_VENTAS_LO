@@ -1,0 +1,6 @@
+@SistemaVentasLO.WebApi_HostAddress = http://localhost:5146
+
+GET {{SistemaVentasLO.WebApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
