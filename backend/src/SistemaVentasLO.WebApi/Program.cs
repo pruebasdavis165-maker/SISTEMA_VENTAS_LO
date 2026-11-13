@@ -1,6 +1,10 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SistemaVentasLO.Application;
 using SistemaVentasLO.Infrastructure;
+using SistemaVentasLO.Infrastructure.Authentication;
 using SistemaVentasLO.WebApi.Middlewares;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,11 +13,39 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
-// 2. Controladores
+// 2. Configuración del esquema de autenticación JWT
+var jwtSettings = new JwtSettings();
+builder.Configuration.GetSection(JwtSettings.SectionName).Bind(jwtSettings);
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.RequireHttpsMetadata = false;
+    options.SaveToken = true;
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SecretKey)),
+        ValidateIssuer = true,
+        ValidIssuer = jwtSettings.Issuer,
+        ValidateAudience = true,
+        ValidAudience = jwtSettings.Audience,
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+builder.Services.AddAuthorization();
+
+// 3. Controladores
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-// 3. Documentación Swagger / OpenAPI
+// 4. Documentación Swagger / OpenAPI
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
@@ -49,7 +81,7 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// 4. Política CORS
+// 5. Política CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("CorsPolicy", policy =>
@@ -62,10 +94,10 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// 5. Middleware Global de Excepciones (RFC 7807)
+// 6. Middleware Global de Excepciones (RFC 7807)
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
-// 6. Pipeline HTTP
+// 7. Pipeline HTTP
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
