@@ -1,0 +1,6 @@
+const appName = 'SistemaVentasLOMobile';
+
+export default {
+  displayName: appName,
+  name: appName,
+};
