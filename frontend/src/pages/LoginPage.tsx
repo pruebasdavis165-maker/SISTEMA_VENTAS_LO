@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Lock, User, AlertCircle, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
+import { Lock, User, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -68,12 +68,8 @@ export const LoginPage: React.FC = () => {
 
         {/* Form Container */}
         <div className="rounded-3xl bg-slate-900/80 backdrop-blur-xl border border-slate-800 p-8 shadow-2xl">
-          <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
+          <div className="mb-6 pb-4 border-b border-slate-800/80">
             <h2 className="text-base font-bold text-white">Iniciar Sesión</h2>
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              Acceso Seguro
-            </span>
           </div>
 
           {error && (
