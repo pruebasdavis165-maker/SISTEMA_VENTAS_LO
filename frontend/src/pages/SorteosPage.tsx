@@ -180,6 +180,17 @@ export const SorteosPage: React.FC = () => {
     return horaIso;
   };
 
+  const getDisplayHoraYNombre = (sorteo: Sorteo) => {
+    let horaStr = formatHoraSorteo(sorteo.horaCierre);
+    let nombre = sorteo.horarioNombre || 'Extraordinario';
+    const match = nombre.match(/\s*\(([^)]+)\)/);
+    if (match) {
+      horaStr = match[1];
+      nombre = nombre.replace(/\s*\([^)]+\)/, '').trim();
+    }
+    return { horaStr, nombre };
+  };
+
   const getEstadoBadge = (s: Sorteo) => {
     if (s.estado === 'LIQUIDADO') {
       return (
@@ -282,32 +293,56 @@ export const SorteosPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto text-xs font-semibold">
-          <button
-            onClick={() => {
-              const d = new Date();
-              d.setDate(d.getDate() - 1);
-              setSelectedFecha(getLocalDateString(d));
-            }}
-            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
-          >
-            Ayer
-          </button>
-          <button
-            onClick={() => setSelectedFecha(getLocalDateString())}
-            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-colors cursor-pointer shadow-sm"
-          >
-            Hoy
-          </button>
-          <button
-            onClick={() => {
-              const d = new Date();
-              d.setDate(d.getDate() + 1);
-              setSelectedFecha(getLocalDateString(d));
-            }}
-            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
-          >
-            Mañana
-          </button>
+          {(() => {
+            const today = new Date();
+            const ayer = new Date(today);
+            ayer.setDate(today.getDate() - 1);
+            const manana = new Date(today);
+            manana.setDate(today.getDate() + 1);
+
+            const hoyStr = getLocalDateString(today);
+            const ayerStr = getLocalDateString(ayer);
+            const mananaStr = getLocalDateString(manana);
+
+            const isAyer = selectedFecha === ayerStr;
+            const isHoy = selectedFecha === hoyStr;
+            const isManana = selectedFecha === mananaStr;
+
+            return (
+              <>
+                <button
+                  onClick={() => setSelectedFecha(ayerStr)}
+                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                    isAyer
+                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-sm'
+                      : 'border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Ayer
+                </button>
+                <button
+                  onClick={() => setSelectedFecha(hoyStr)}
+                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                    isHoy
+                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-sm'
+                      : 'border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Hoy
+                </button>
+                <button
+                  onClick={() => setSelectedFecha(mananaStr)}
+                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                    isManana
+                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-sm'
+                      : 'border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  Mañana
+                </button>
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -335,7 +370,7 @@ export const SorteosPage: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {sorteos.map((sorteo) => {
-            const horaFormatted = formatHoraSorteo(sorteo.horaCierre);
+            const { horaStr, nombre } = getDisplayHoraYNombre(sorteo);
             return (
               <div
                 key={sorteo.id}
@@ -354,8 +389,8 @@ export const SorteosPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-baseline gap-2 mb-2">
-                    <h3 className="text-2xl font-black text-slate-900 dark:text-white font-mono">{horaFormatted}</h3>
-                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{sorteo.horarioNombre || 'Extraordinario'}</span>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white font-mono">{horaStr}</h3>
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{nombre}</span>
                   </div>
 
                   <div className="mb-4">
