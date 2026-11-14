@@ -7,7 +7,7 @@ using SistemaVentasLO.Domain.Exceptions;
 
 namespace SistemaVentasLO.Application.Features.Zonas.Commands.ActualizarZona;
 
-public record ActualizarZonaCommand(int Id, string Nombre, decimal CoeficientePremio) : IRequest<ZonaDto>;
+public record ActualizarZonaCommand(int Id, string Nombre, decimal CoeficientePremio, bool? Estado = null) : IRequest<ZonaDto>;
 
 public class ActualizarZonaCommandValidator : AbstractValidator<ActualizarZonaCommand>
 {
@@ -21,7 +21,8 @@ public class ActualizarZonaCommandValidator : AbstractValidator<ActualizarZonaCo
             .MaximumLength(100).WithMessage("El nombre de la zona no puede superar 100 caracteres.");
 
         RuleFor(x => x.CoeficientePremio)
-            .GreaterThan(0).WithMessage("El coeficiente de premio debe ser un número positivo mayor a 0.");
+            .GreaterThan(0).WithMessage("El coeficiente de premio debe ser un número positivo mayor a 0.")
+            .LessThanOrEqualTo(99).WithMessage("El coeficiente de premio no puede ser mayor a 99.");
     }
 }
 
@@ -55,6 +56,10 @@ public class ActualizarZonaCommandHandler : IRequestHandler<ActualizarZonaComman
 
         zona.Nombre = request.Nombre.Trim();
         zona.CoeficientePremio = request.CoeficientePremio;
+        if (request.Estado.HasValue)
+        {
+            zona.Estado = request.Estado.Value;
+        }
         zona.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);

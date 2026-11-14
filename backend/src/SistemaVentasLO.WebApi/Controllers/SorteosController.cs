@@ -80,7 +80,7 @@ public class SorteosController : ApiControllerBase
     [ProducesResponseType(typeof(SorteoDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> ChangeState(long id, [FromBody] CambiarEstadoSorteoRequest request)
     {
-        var result = await Mediator.Send(new CambiarEstadoSorteoCommand(id, request.Estado));
+        var result = await Mediator.Send(new CambiarEstadoSorteoCommand(id, request.ObtenerEstado()));
         return Ok(result);
     }
 

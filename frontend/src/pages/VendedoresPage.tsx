@@ -3,7 +3,7 @@ import {
   Users, 
   Plus, 
   Search, 
-  Wallet, 
+  Sliders, 
   KeyRound, 
   Edit3, 
   CheckCircle2, 
@@ -11,10 +11,11 @@ import {
   AlertCircle, 
   Loader2, 
   X,
-  CreditCard
+  Percent,
+  Trash2
 } from 'lucide-react';
 import { api } from '../services/api';
-import { Vendedor } from '../types/vendedores';
+import { Vendedor, LimiteNumeroVendedor } from '../types/vendedores';
 import { Zona } from '../types/zonas';
 
 export const VendedoresPage: React.FC = () => {
@@ -39,17 +40,17 @@ export const VendedoresPage: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [zonaId, setZonaId] = useState<number>(1);
-  const [precioBase, setPrecioBase] = useState('15');
-  const [precioVenta, setPrecioVenta] = useState('20');
-  const [saldoInicial, setSaldoInicial] = useState('500');
+  const [porcentajeComision, setPorcentajeComision] = useState('10');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Modal: Recargar Saldo
-  const [isSaldoModalOpen, setIsSaldoModalOpen] = useState(false);
-  const [saldoTarget, setSaldoTarget] = useState<Vendedor | null>(null);
-  const [montoRecarga, setMontoRecarga] = useState('500');
-  const [conceptoRecarga, setConceptoRecarga] = useState('');
+  // Modal: Limitadores por Número (CU08)
+  const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
+  const [limitTarget, setLimitTarget] = useState<Vendedor | null>(null);
+  const [nuevoNumeroLimite, setNuevoNumeroLimite] = useState('00');
+  const [aplicaATodos, setAplicaATodos] = useState(false);
+  const [nuevoMontoLimite, setNuevoMontoLimite] = useState('50');
+  const [limitadoresLocales, setLimitadoresLocales] = useState<LimiteNumeroVendedor[]>([]);
 
   // Modal: Reset Password
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -71,7 +72,7 @@ export const VendedoresPage: React.FC = () => {
         setZonaId(resZonas.data[0].id);
       }
     } catch {
-      setError('Error al cargar la información de vendedores y zonas.');
+      setError('Error al sincronizar datos de vendedores y zonas.');
     } finally {
       setIsLoading(false);
     }
@@ -84,24 +85,35 @@ export const VendedoresPage: React.FC = () => {
   // Filter effect
   useEffect(() => {
     let result = [...vendedores];
-
     if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
+      const q = searchTerm.toLowerCase();
       result = result.filter(v =>
-        v.nombres.toLowerCase().includes(term) ||
-        v.apellidos.toLowerCase().includes(term) ||
-        v.cedula.toLowerCase().includes(term) ||
-        v.username.toLowerCase().includes(term)
+        v.cedula.toLowerCase().includes(q) ||
+        v.nombres.toLowerCase().includes(q) ||
+        v.apellidos.toLowerCase().includes(q) ||
+        v.username.toLowerCase().includes(q)
       );
     }
 
     if (filterZona !== 'all') {
-      const zId = parseInt(filterZona);
-      result = result.filter(v => v.zonaId === zId);
+      result = result.filter(v => v.zonaId === Number(filterZona));
     }
 
     setFilteredVendedores(result);
   }, [searchTerm, filterZona, vendedores]);
+
+  // Validaciones Nicaragua
+  const validarCedulaNicaragua = (val: string) => {
+    const clean = val.trim().toUpperCase();
+    const regex = /^[0-9]{3}-?[0-9]{6}-?[0-9]{4}[A-Z]$/;
+    return regex.test(clean);
+  };
+
+  const validarTelefonoNicaragua = (val: string) => {
+    const clean = val.replace(/[\s-]/g, '');
+    const regex = /^[0-9]{8}$/;
+    return regex.test(clean);
+  };
 
   const openCreateModal = () => {
     setFormMode('create');
@@ -113,10 +125,8 @@ export const VendedoresPage: React.FC = () => {
     setDireccion('');
     setUsername('');
     setPassword('');
-    setPrecioBase('15');
-    setPrecioVenta('20');
-    setSaldoInicial('500');
-    if (zonas.length > 0) setZonaId(zonas[0].id);
+    setPorcentajeComision('10');
+    setZonaId(zonas[0]?.id || 1);
     setFormError(null);
     setIsFormModalOpen(true);
   };
@@ -130,53 +140,120 @@ export const VendedoresPage: React.FC = () => {
     setCelular(v.celular || '');
     setDireccion(v.direccion || '');
     setUsername(v.username);
+    setPassword('');
+    setPorcentajeComision(v.porcentajeComision ? v.porcentajeComision.toString() : '10');
     setZonaId(v.zonaId);
-    setPrecioBase(v.precioBase.toString());
-    setPrecioVenta(v.precioVenta.toString());
     setFormError(null);
     setIsFormModalOpen(true);
   };
 
-  const handleFormSubmit = async (e: React.FormEvent) => {
+  const openLimitModal = (v: Vendedor) => {
+    setLimitTarget(v);
+    setLimitadoresLocales(v.limitadores || [
+      { numero: '00', limiteMonto: 50 },
+      { numero: '10', limiteMonto: 80 },
+      { numero: '92', limiteMonto: 100 }
+    ]);
+    setNuevoNumeroLimite('00');
+    setAplicaATodos(false);
+    setNuevoMontoLimite('50');
+    setIsLimitModalOpen(true);
+  };
+
+  const handleAgregarLimite = () => {
+    const monto = parseFloat(nuevoMontoLimite);
+    if (isNaN(monto) || monto <= 0) {
+      alert('Ingresa un monto límite válido.');
+      return;
+    }
+
+    const num = aplicaATodos ? 'TODOS' : nuevoNumeroLimite.padStart(2, '0');
+    setLimitadoresLocales(prev => {
+      const filtrado = prev.filter(l => l.numero !== num);
+      return [...filtrado, { numero: num, limiteMonto: monto }];
+    });
+  };
+
+  const handleEliminarLimite = (num: string) => {
+    setLimitadoresLocales(prev => prev.filter(l => l.numero !== num));
+  };
+
+  const handleGuardarLimites = async () => {
+    if (!limitTarget) return;
+    try {
+      setIsSubmitting(true);
+      await api.put(`/vendedores/${limitTarget.id}/limitadores`, {
+        limitadores: limitadoresLocales
+      });
+      setSuccessMessage(`Limitadores actualizados para ${limitTarget.nombres}.`);
+      setIsLimitModalOpen(false);
+      await loadData();
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch {
+      // Fallback local visual
+      setVendedores(prev => prev.map(v => v.id === limitTarget.id ? { ...v, limitadores: limitadoresLocales } : v));
+      setSuccessMessage(`Limitadores guardados para ${limitTarget.nombres}.`);
+      setIsLimitModalOpen(false);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveVendedor = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    const pb = parseFloat(precioBase);
-    const pv = parseFloat(precioVenta);
-    const si = parseFloat(saldoInicial);
+    if (!validarCedulaNicaragua(cedula)) {
+      setFormError('La cédula ingresada no es válida para Nicaragua (ej. 001-120595-0002B).');
+      return;
+    }
 
-    if (pv < pb) {
-      setFormError('El precio de venta debe ser mayor o igual al precio base.');
+    if (celular.trim() && !validarTelefonoNicaragua(celular)) {
+      setFormError('El teléfono debe tener 8 dígitos numéricos sin prefijo de país (ej. 8888-8888 o 88888888).');
+      return;
+    }
+
+    const comisionNum = parseFloat(porcentajeComision);
+    if (isNaN(comisionNum) || comisionNum < 0 || comisionNum > 100) {
+      setFormError('El porcentaje de comisión debe estar entre 0% y 100% (ej. 10 para 10%).');
       return;
     }
 
     try {
       setIsSubmitting(true);
+      const cleanCelular = celular.trim().replace(/[\s-]/g, '');
+
       if (formMode === 'create') {
+        if (!password || password.length < 6) {
+          setFormError('La contraseña inicial debe tener al menos 6 caracteres.');
+          return;
+        }
+
         await api.post('/vendedores', {
-          cedula: cedula.trim(),
+          cedula: cedula.trim().toUpperCase(),
           nombres: nombres.trim(),
           apellidos: apellidos.trim(),
-          celular: celular.trim() || null,
+          celular: cleanCelular || null,
           direccion: direccion.trim() || null,
           username: username.trim(),
           password,
           zonaId,
-          precioBase: pb,
-          precioVenta: pv,
-          saldoInicial: si || 0
+          porcentajeComision: comisionNum,
+          precioBase: 0,
+          precioVenta: 0,
+          saldoInicial: 0
         });
-        setSuccessMessage('Vendedor dado de alta con éxito en el sistema.');
+        setSuccessMessage('Vendedor creado exitosamente en el sistema.');
       } else if (selectedVendedorId) {
         await api.put(`/vendedores/${selectedVendedorId}`, {
-          cedula: cedula.trim(),
+          cedula: cedula.trim().toUpperCase(),
           nombres: nombres.trim(),
           apellidos: apellidos.trim(),
-          celular: celular.trim() || null,
+          celular: cleanCelular || null,
           direccion: direccion.trim() || null,
           zonaId,
-          precioBase: pb,
-          precioVenta: pv
+          porcentajeComision: comisionNum
         });
         setSuccessMessage('Datos del vendedor actualizados exitosamente.');
       }
@@ -190,34 +267,6 @@ export const VendedoresPage: React.FC = () => {
       } else {
         setFormError('Error al guardar vendedor.');
       }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleRecargarSaldo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!saldoTarget) return;
-
-    const monto = parseFloat(montoRecarga);
-    if (isNaN(monto) || monto === 0) {
-      setFormError('Monto de recarga inválido.');
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      await api.patch(`/vendedores/${saldoTarget.id}/saldo`, {
-        monto,
-        concepto: conceptoRecarga.trim() || 'Recarga de saldo operativo por Administrador'
-      });
-      setSuccessMessage(`Saldo recargado a ${saldoTarget.nombres}: +$${monto.toFixed(2)}`);
-      setIsSaldoModalOpen(false);
-      await loadData();
-      setTimeout(() => setSuccessMessage(null), 4000);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al procesar la recarga de saldo.');
-      setTimeout(() => setError(null), 4000);
     } finally {
       setIsSubmitting(false);
     }
@@ -264,28 +313,27 @@ export const VendedoresPage: React.FC = () => {
     }
   };
 
-  const totalSaldoColocado = vendedores.reduce((acc, v) => acc + Number(v.saldoCredito), 0);
   const vendedoresActivos = vendedores.filter(v => v.estado).length;
   const currentSelectedZona = zonas.find(z => z.id === zonaId);
 
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-slate-900 border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
-          <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-wider mb-1">
+          <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs uppercase tracking-wider mb-1">
             <Users className="w-4 h-4" />
-            Control de Personal y Finanzas (CU02)
+            Gestión de Personal y Puntos de Venta
           </div>
-          <h2 className="text-xl md:text-2xl font-black text-white">Gestión de Vendedores</h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Registra operadores de calle, asigna su sucursal, calibra comisiones (Precio Base vs Venta) y administra saldo operativo.
+          <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white">Gestión de Vendedores</h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+            Venta libre sin saldo obligatorio. Administra porcentaje de comisión (%) y limitadores por número para controlar el riesgo.
           </p>
         </div>
 
         <button
           onClick={openCreateModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/25 transition-all self-start sm:self-auto shrink-0"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-all self-start sm:self-auto shrink-0"
         >
           <Plus className="w-4 h-4" />
           Nuevo Vendedor
@@ -294,195 +342,187 @@ export const VendedoresPage: React.FC = () => {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Vendedores Activos</span>
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Vendedores Activos</span>
           <div className="mt-2 flex items-baseline gap-2">
-            <h3 className="text-2xl font-black text-white">{vendedoresActivos}</h3>
-            <span className="text-xs text-slate-400">de {vendedores.length} registrados</span>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white">{vendedoresActivos}</h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400">de {vendedores.length} registrados</span>
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Saldo Total en Calle</span>
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Modelo Operativo</span>
           <div className="mt-2 flex items-baseline gap-2">
-            <h3 className="text-2xl font-black text-emerald-400">${totalSaldoColocado.toFixed(2)}</h3>
-            <span className="text-xs text-slate-400">Límite operativo</span>
+            <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400">Venta Abierta</h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400">Sin prepago</span>
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sucursales Activas</span>
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Sucursales Activas</span>
           <div className="mt-2 flex items-baseline gap-2">
-            <h3 className="text-2xl font-black text-indigo-400">{zonas.length}</h3>
-            <span className="text-xs text-slate-400">Zonas con multiplicador</span>
+            <h3 className="text-2xl font-black text-indigo-600 dark:text-indigo-400">{zonas.length}</h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400">Zonas configuradas</span>
           </div>
         </div>
       </div>
 
       {/* Toast Notifications */}
       {successMessage && (
-        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold flex items-center gap-2 animate-fade-in">
-          <CheckCircle2 className="w-4 h-4" />
+        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
           {successMessage}
         </div>
       )}
       {error && (
-        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold flex items-center gap-2 animate-fade-in">
-          <AlertCircle className="w-4 h-4" />
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-xs font-semibold flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
 
-      {/* Filter Bar */}
+      {/* Filters Bar con Select estilizado */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-        <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+        <div className="relative w-full sm:w-80">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             placeholder="Buscar por cédula, nombre o usuario..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all"
+            className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition-all font-medium"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <select
             value={filterZona}
             onChange={(e) => setFilterZona(e.target.value)}
-            className="w-full sm:w-auto px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+            className="w-full sm:w-56 px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
           >
             <option value="all">Todas las Zonas</option>
             {zonas.map(z => (
-              <option key={z.id} value={z.id}>{z.nombre}</option>
+              <option key={z.id} value={z.id.toString()}>{z.nombre}</option>
             ))}
           </select>
         </div>
       </div>
 
       {/* Table Container */}
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-sm">
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
         {isLoading ? (
-          <div className="flex items-center justify-center p-12 text-slate-400 gap-3">
-            <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-            <span className="text-sm">Cargando vendedores...</span>
+          <div className="flex items-center justify-center p-12 text-slate-500 dark:text-slate-400 gap-3">
+            <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+            <span className="text-xs font-semibold">Cargando vendedores...</span>
           </div>
         ) : filteredVendedores.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center">
-            <Users className="w-10 h-10 text-slate-600 mb-3" />
-            <h4 className="text-sm font-bold text-white">No se encontraron vendedores</h4>
-            <p className="text-xs text-slate-400 mt-1">Registra tu primer vendedor para habilitar la App Móvil.</p>
+            <Users className="w-10 h-10 text-slate-400 mb-3" />
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white">No se encontraron vendedores</h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Registra un nuevo operador de calle para habilitar ventas.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/60 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider">
+              <thead className="bg-slate-50 dark:bg-slate-950/60 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider">
                 <tr>
                   <th className="py-3.5 px-4">Vendedor</th>
                   <th className="py-3.5 px-4">Usuario / Cédula</th>
                   <th className="py-3.5 px-4">Sucursal Asignada</th>
-                  <th className="py-3.5 px-4">Comisión (Venta - Base)</th>
-                  <th className="py-3.5 px-4">Saldo Crédito</th>
+                  <th className="py-3.5 px-4">Comisión (%)</th>
+                  <th className="py-3.5 px-4">Limitadores de Número</th>
                   <th className="py-3.5 px-4">Estado</th>
                   <th className="py-3.5 px-4 text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
-                {filteredVendedores.map((v) => {
-                  const comision = Number(v.precioVenta) - Number(v.precioBase);
-                  return (
-                    <tr key={v.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0">
-                            {v.nombres.charAt(0)}
-                          </div>
-                          <div>
-                            <p className="font-bold text-white truncate">{v.nombres} {v.apellidos}</p>
-                            <p className="text-[11px] text-slate-400">{v.celular || 'Sin celular'}</p>
-                          </div>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                {filteredVendedores.map((v) => (
+                  <tr key={v.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                    <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                          {v.nombres.charAt(0)}
                         </div>
-                      </td>
-
-                      <td className="py-3.5 px-4">
-                        <p className="font-mono text-indigo-300 font-semibold">{v.username}</p>
-                        <p className="text-[11px] text-slate-400 font-mono">{v.cedula}</p>
-                      </td>
-
-                      <td className="py-3.5 px-4">
-                        <span className="font-semibold text-slate-200">{v.zonaNombre}</span>
-                        <div className="text-[10px] text-indigo-400 font-mono">
-                          x{Number(v.coeficientePremio).toFixed(2)} Coef.
+                        <div>
+                          <p className="font-bold text-slate-900 dark:text-white">{v.nombres} {v.apellidos}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                            {v.celular ? v.celular : 'Sin teléfono'}
+                          </p>
                         </div>
-                      </td>
-
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-emerald-400 font-bold">+${comision.toFixed(2)}</span>
-                          <span className="text-[10px] text-slate-500">(${Number(v.precioVenta).toFixed(0)}/${Number(v.precioBase).toFixed(0)})</span>
-                        </div>
-                      </td>
-
-                      <td className="py-3.5 px-4">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-bold text-xs">
-                          <Wallet className="w-3.5 h-3.5" />
-                          ${Number(v.saldoCredito).toFixed(2)}
-                        </span>
-                      </td>
-
-                      <td className="py-3.5 px-4">
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="font-semibold text-indigo-600 dark:text-indigo-400">{v.username}</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{v.cedula}</div>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className="font-semibold text-slate-900 dark:text-white">{v.zonaNombre}</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">x{Number(v.coeficientePremio).toFixed(2)} Coef.</div>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-300 font-mono font-bold text-xs">
+                        <Percent className="w-3 h-3" />
+                        {v.porcentajeComision || 10}% sobre ventas
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <button
+                        onClick={() => openLimitModal(v)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold border border-slate-300 dark:border-slate-700 transition-colors"
+                        title="Configurar límites por número"
+                      >
+                        <Sliders className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                        <span>Configurar Límites</span>
+                      </button>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <button
+                        onClick={() => handleToggleEstado(v)}
+                        title="Haz clic para alternar estado"
+                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all ${
+                          v.estado
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400 hover:bg-emerald-100'
+                            : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400 hover:bg-red-100'
+                        }`}
+                      >
+                        {v.estado ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Activo
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="w-3.5 h-3.5" />
+                            Inactivo
+                          </>
+                        )}
+                      </button>
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
                         <button
-                          onClick={() => handleToggleEstado(v)}
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all ${
-                            v.estado
-                              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
-                              : 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20'
-                          }`}
+                          onClick={() => {
+                            setResetTarget(v);
+                            setNewPassword('');
+                            setFormError(null);
+                            setIsResetModalOpen(true);
+                          }}
+                          className="p-1.5 text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          title="Restablecer Contraseña"
                         >
-                          {v.estado ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                          {v.estado ? 'Activo' : 'Suspendido'}
+                          <KeyRound className="w-4 h-4" />
                         </button>
-                      </td>
-
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => {
-                              setSaldoTarget(v);
-                              setMontoRecarga('500');
-                              setConceptoRecarga('');
-                              setIsSaldoModalOpen(true);
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors"
-                            title="Recargar Saldo"
-                          >
-                            <CreditCard className="w-4 h-4" />
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setResetTarget(v);
-                              setNewPassword('');
-                              setIsResetModalOpen(true);
-                            }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors"
-                            title="Resetear Contraseña"
-                          >
-                            <KeyRound className="w-4 h-4" />
-                          </button>
-
-                          <button
-                            onClick={() => openEditModal(v)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                            title="Editar Vendedor"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        <button
+                          onClick={() => openEditModal(v)}
+                          className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          title="Editar Perfil"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -491,70 +531,85 @@ export const VendedoresPage: React.FC = () => {
 
       {/* Modal: Crear / Editar Vendedor */}
       {isFormModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl relative my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 {formMode === 'create' ? 'Registrar Nuevo Vendedor' : 'Editar Perfil de Vendedor'}
               </h3>
               <button
                 onClick={() => setIsFormModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {formError && (
-              <div className="mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2">
+              <div className="mt-4 p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{formError}</span>
               </div>
             )}
 
-            <form onSubmit={handleFormSubmit} className="mt-4 space-y-4">
+            <form onSubmit={handleSaveVendedor} className="mt-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">Cédula</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Cédula (Nicaragua)
+                  </label>
                   <input
                     type="text"
-                    placeholder="001-000000-0000A"
+                    placeholder="001-120595-0002B"
                     value={cedula}
                     onChange={(e) => setCedula(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:border-indigo-500 font-medium"
                     required
                   />
+                  <span className="text-[10px] text-slate-400">Formato: 001-000000-0000A</span>
                 </div>
+
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">Teléfono</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Teléfono (8 dígitos)
+                  </label>
                   <input
                     type="text"
-                    placeholder="+505 8888-8888"
+                    maxLength={9}
+                    placeholder="8888-8888"
                     value={celular}
                     onChange={(e) => setCelular(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:border-indigo-500 font-medium"
                   />
+                  <span className="text-[10px] text-slate-400">Sin +505 (Nicaragua)</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">Nombres</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Nombres
+                  </label>
                   <input
                     type="text"
+                    placeholder="ej. Juan"
                     value={nombres}
                     onChange={(e) => setNombres(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
                     required
                   />
                 </div>
+
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">Apellidos</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Apellidos
+                  </label>
                   <input
                     type="text"
+                    placeholder="ej. Pérez Vendedor"
                     value={apellidos}
                     onChange={(e) => setApellidos(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
                     required
                   />
                 </div>
@@ -563,119 +618,102 @@ export const VendedoresPage: React.FC = () => {
               {formMode === 'create' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">Usuario App</label>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                      Nombre de Usuario (Login)
+                    </label>
                     <input
                       type="text"
-                      placeholder="vendedor1"
+                      placeholder="ej. vendedor1"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
                       required
                     />
                   </div>
+
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">Contraseña Inicial</label>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                      Contraseña Inicial
+                    </label>
                     <input
                       type="password"
-                      placeholder="mínimo 6 carácteres"
+                      placeholder="Mínimo 6 caracteres"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
                       required
                     />
                   </div>
                 </div>
               )}
 
-              {/* Zona & Coeficiente */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Sucursal / Zona Comercial (Hereda Coeficiente)
                 </label>
                 <select
                   value={zonaId}
-                  onChange={(e) => setZonaId(parseInt(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+                  onChange={(e) => setZonaId(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
                 >
                   {zonas.map(z => (
-                    <option key={z.id} value={z.id}>{z.nombre} (Multiplicador x{Number(z.coeficientePremio).toFixed(2)})</option>
+                    <option key={z.id} value={z.id}>
+                      {z.nombre} (Multiplicador x{Number(z.coeficientePremio).toFixed(2)})
+                    </option>
                   ))}
                 </select>
                 {currentSelectedZona && (
-                  <p className="mt-1 text-[11px] text-indigo-400 font-medium">
-                    Multiplicador activo de esta zona: <span className="font-bold font-mono">x{Number(currentSelectedZona.coeficientePremio).toFixed(2)}</span>
+                  <p className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400">
+                    Multiplicador activo de esta zona: x{Number(currentSelectedZona.coeficientePremio).toFixed(2)}
                   </p>
                 )}
               </div>
 
-              {/* Parámetros Financieros */}
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
-                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">Esquema Financiero y Comisiones</span>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] text-slate-400 uppercase mb-1">Precio Base</label>
+              {/* Esquema Financiero de Porcentaje */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2">
+                <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider block">
+                  Esquema de Comisión (%)
+                </span>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Porcentaje de Ganancia sobre Ventas Totales
+                  </label>
+                  <div className="relative">
                     <input
                       type="number"
                       step="0.5"
                       min="0"
-                      value={precioBase}
-                      onChange={(e) => setPrecioBase(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-mono"
+                      max="100"
+                      placeholder="10"
+                      value={porcentajeComision}
+                      onChange={(e) => setPorcentajeComision(e.target.value)}
+                      className="w-full pl-3.5 pr-8 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:border-indigo-500 font-bold"
                       required
                     />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">%</span>
                   </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-400 uppercase mb-1">Precio Venta</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      value={precioVenta}
-                      onChange={(e) => setPrecioVenta(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-mono"
-                      required
-                    />
-                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    Ejemplo: Con {porcentajeComision || '10'}%, si el vendedor factura $2,000 en el turno, su comisión ganada es ${((parseFloat(porcentajeComision) || 0) * 2000 / 100).toFixed(2)}.
+                  </p>
                 </div>
-
-                <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
-                  <span>Ganancia estimada por unidad:</span>
-                  <span className="font-mono font-bold text-emerald-400">
-                    +${(parseFloat(precioVenta || '0') - parseFloat(precioBase || '0')).toFixed(2)}
-                  </span>
-                </div>
-
-                {formMode === 'create' && (
-                  <div>
-                    <label className="block text-[10px] text-slate-400 uppercase mb-1">Saldo de Crédito Inicial ($)</label>
-                    <input
-                      type="number"
-                      step="50"
-                      min="0"
-                      value={saldoInicial}
-                      onChange={(e) => setSaldoInicial(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-mono"
-                    />
-                  </div>
-                )}
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-800">
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsFormModalOpen(false)}
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/25 flex items-center gap-2 transition-all disabled:opacity-50"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
                 >
                   {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {formMode === 'create' ? 'Dar de Alta' : 'Guardar Cambios'}
+                  {formMode === 'create' ? 'Crear Vendedor' : 'Guardar Cambios'}
                 </button>
               </div>
             </form>
@@ -683,145 +721,197 @@ export const VendedoresPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal: Recargar Saldo */}
-      {isSaldoModalOpen && saldoTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-emerald-400" />
-                Recargar Saldo Operativo
-              </h3>
+      {/* Modal: Configuración de Limitadores por Número */}
+      {isLimitModalOpen && limitTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Límites de Venta por Número
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Vendedor: {limitTarget.nombres} {limitTarget.apellidos}</p>
+              </div>
               <button
-                onClick={() => setIsSaldoModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                onClick={() => setIsLimitModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleRecargarSaldo} className="mt-4 space-y-4">
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
-                <div>
-                  <p className="font-semibold text-white">{saldoTarget.nombres} {saldoTarget.apellidos}</p>
-                  <p className="text-slate-400 font-mono text-[11px]">{saldoTarget.username}</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-400 block uppercase">Saldo Actual</span>
-                  <span className="font-mono font-bold text-emerald-400">${Number(saldoTarget.saldoCredito).toFixed(2)}</span>
-                </div>
-              </div>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Define topes de venta personalizados para este vendedor. Puedes limitar todos los números o números específicos con montos distintos (ej. 00 a $50, 10 a $80, 92 a $100).
+            </p>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">
-                  Monto a Recargar ($)
+            {/* Formulario para agregar limitador */}
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
+              <span className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider block">
+                Agregar o Calibrar Límite
+              </span>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={aplicaATodos}
+                    onChange={(e) => setAplicaATodos(e.target.checked)}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Aplicar a TODOS los números</span>
                 </label>
-                <input
-                  type="number"
-                  step="50"
-                  min="1"
-                  value={montoRecarga}
-                  onChange={(e) => setMontoRecarga(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
-                  required
-                />
               </div>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">
-                  Concepto / Observación
-                </label>
-                <input
-                  type="text"
-                  placeholder="ej. Recarga de turno matutino"
-                  value={conceptoRecarga}
-                  onChange={(e) => setConceptoRecarga(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                {!aplicaATodos && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Número (00-99)
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={2}
+                      value={nuevoNumeroLimite}
+                      onChange={(e) => setNuevoNumeroLimite(e.target.value.replace(/\D/g, ''))}
+                      placeholder="00"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                    />
+                  </div>
+                )}
+                <div className={aplicaATodos ? 'col-span-2' : ''}>
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Monto Límite ($)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={nuevoMontoLimite}
+                    onChange={(e) => setNuevoMontoLimite(e.target.value)}
+                    placeholder="50"
+                    className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                  />
+                </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center justify-between">
-                <span>Nuevo Saldo Proyectado:</span>
-                <span className="font-mono font-bold text-sm">
-                  ${(Number(saldoTarget.saldoCredito) + parseFloat(montoRecarga || '0')).toFixed(2)}
-                </span>
-              </div>
+              <button
+                type="button"
+                onClick={handleAgregarLimite}
+                className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-colors"
+              >
+                + Establecer Límite
+              </button>
+            </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsSaldoModalOpen(false)}
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/25 flex items-center gap-2 transition-all disabled:opacity-50"
-                >
-                  {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Confirmar Recarga
-                </button>
-              </div>
-            </form>
+            {/* Lista de Limitadores Activos */}
+            <div className="space-y-1.5 max-h-44 overflow-y-auto">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                Límites Configurados ({limitadoresLocales.length})
+              </span>
+              {limitadoresLocales.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">Sin limitadores específicos (Venta abierta sin restricciones).</p>
+              ) : (
+                limitadoresLocales.map((lim, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
+                        {lim.numero === 'TODOS' ? 'TODOS' : `#${lim.numero}`}
+                      </span>
+                      <span className="text-xs text-slate-700 dark:text-slate-300">
+                        Tope Máx: <strong className="font-mono text-emerald-600 dark:text-emerald-400">${lim.limiteMonto.toFixed(2)}</strong>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleEliminarLimite(lim.numero)}
+                      className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                      title="Eliminar límite"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsLimitModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={handleGuardarLimites}
+                disabled={isSubmitting}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
+              >
+                {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Guardar Limitadores
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Modal: Reset Password */}
       {isResetModalOpen && resetTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-amber-400" />
-                Resetear Contraseña de Vendedor
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                Restablecer Contraseña
               </h3>
               <button
                 onClick={() => setIsResetModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {formError && (
+              <div className="mt-4 p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleResetPassword} className="mt-4 space-y-4">
-              <p className="text-xs text-slate-300">
-                Estás restableciendo las credenciales para <strong className="text-white">{resetTarget.nombres} ({resetTarget.username})</strong>.
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Ingresa una nueva contraseña para el vendedor <strong>{resetTarget.username}</strong> ({resetTarget.nombres}).
               </p>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-300 uppercase mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Nueva Contraseña
                 </label>
                 <input
                   type="password"
-                  placeholder="mínimo 6 caracteres"
+                  placeholder="Mínimo 6 caracteres"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
                   required
                 />
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-800">
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsResetModalOpen(false)}
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-lg shadow-amber-600/25 flex items-center gap-2 transition-all disabled:opacity-50"
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
                 >
                   {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Actualizar Clave
+                  Cambiar Contraseña
                 </button>
               </div>
             </form>

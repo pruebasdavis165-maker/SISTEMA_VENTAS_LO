@@ -44,9 +44,10 @@ public class EmitirBoletoCommandHandler : IRequestHandler<EmitirBoletoCommand, B
             throw new InvalidOperationException("El boleto debe contener al menos una jugada.");
         }
 
-        // 1. Obtener Sorteo y validar que esté ABIERTO y falten más de 5 minutos
+        // 1. Obtener Sorteo y validar que permita venta (admite venta adelantada para cualquier sorteo no liquidado)
         var sorteo = await _context.Sorteos
             .Include(s => s.Zona)
+            .Include(s => s.HorarioConfiguracion)
             .FirstOrDefaultAsync(s => s.Id == request.SorteoId, cancellationToken);
 
         if (sorteo == null)
@@ -54,15 +55,16 @@ public class EmitirBoletoCommandHandler : IRequestHandler<EmitirBoletoCommand, B
             throw new InvalidOperationException("El sorteo especificado no existe.");
         }
 
-        if (sorteo.Estado != "ABIERTO")
+        if (sorteo.Estado == "LIQUIDADO" || sorteo.Estado == "CANCELADO")
         {
-            throw new InvalidOperationException($"El sorteo {sorteo.Codigo} no está abierto para venta (Estado: {sorteo.Estado}).");
+            throw new InvalidOperationException($"El sorteo {sorteo.Codigo} no está disponible para venta (Estado: {sorteo.Estado}).");
         }
 
+        var minutosBloqueo = sorteo.HorarioConfiguracion?.MinutosBloqueoPrevio ?? 5;
         var minutosRestantes = (sorteo.HoraCierre - DateTime.UtcNow).TotalMinutes;
-        if (minutosRestantes <= 5)
+        if (minutosRestantes <= minutosBloqueo)
         {
-            throw new InvalidOperationException($"Venta cerrada. Faltan menos de 5 minutos para el sorteo {sorteo.Codigo} ({minutosRestantes:F1} min restantes).");
+            throw new InvalidOperationException($"Venta congelada. Faltan menos de {minutosBloqueo} minutos para el cierre del sorteo {sorteo.Codigo} ({minutosRestantes:F1} min restantes).");
         }
 
         // 2. Obtener Vendedor y Zona
@@ -83,16 +85,11 @@ public class EmitirBoletoCommandHandler : IRequestHandler<EmitirBoletoCommand, B
         var coeficiente = vendedor.Zona?.CoeficientePremio ?? 70m;
         var zonaId = vendedor.ZonaId ?? (sorteo.ZonaId ?? 1);
 
-        // 3. Validar Saldo del Vendedor
+        // 3. Validar Total Apostado (En Sistema Ventas LO los vendedores no requieren saldo prepagado)
         var totalApostado = request.Jugadas.Sum(j => j.Monto);
         if (totalApostado <= 0)
         {
             throw new InvalidOperationException("El total apostado debe ser mayor a cero.");
-        }
-
-        if (vendedor.SaldoCredito < totalApostado)
-        {
-            throw new InvalidOperationException($"Saldo insuficiente. Saldo disponible: ${vendedor.SaldoCredito:F2}, Total requerido: ${totalApostado:F2}.");
         }
 
         // 4. Validar Bloqueos de Riesgo (Global, Zona, Vendedor)
@@ -110,18 +107,14 @@ public class EmitirBoletoCommandHandler : IRequestHandler<EmitirBoletoCommand, B
             throw new InvalidOperationException($"El número {b.Numero} está bloqueado por riesgo financiero ({b.Alcance}): {b.Motivo ?? "Sin motivo especificado"}.");
         }
 
-        // 5. Descontar Saldo y Registrar Movimiento
-        var saldoAnterior = vendedor.SaldoCredito;
-        vendedor.SaldoCredito -= totalApostado;
-        var saldoPosterior = vendedor.SaldoCredito;
-
+        // 5. Registrar Transacción de Venta (Informativo, sin bloquear al vendedor)
         _context.TransaccionesSaldo.Add(new TransaccionSaldo
         {
             VendedorId = vendedor.Id,
             TipoMovimiento = "VENTA_BOLETO",
-            Monto = -totalApostado,
-            SaldoAnterior = saldoAnterior,
-            SaldoPosterior = saldoPosterior,
+            Monto = totalApostado,
+            SaldoAnterior = vendedor.SaldoCredito,
+            SaldoPosterior = vendedor.SaldoCredito,
             Concepto = $"Emisión de boleto para sorteo {sorteo.Codigo}",
             CreatedAt = DateTime.UtcNow
         });
