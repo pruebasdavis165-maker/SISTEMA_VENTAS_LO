@@ -24,3 +24,14 @@ public record ActualizarZonaRequest(
 public record CambiarEstadoZonaRequest(
     bool Estado
 );
+
+public record BloqueoZonaDto(
+    string Numero,
+    string? Motivo,
+    DateTime CreatedAt
+);
+
+public record BloquearNumerosZonaRequest(
+    List<string> Numeros,
+    string? Motivo
+);
