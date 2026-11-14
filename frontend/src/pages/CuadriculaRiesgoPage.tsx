@@ -126,14 +126,12 @@ export const CuadriculaRiesgoPage: React.FC = () => {
       setModalAlcance(celda.alcanceBloqueo as any || 'GLOBAL');
     }
 
-    if (celda.montoLimite !== undefined && celda.montoLimite !== null) {
-      if (celda.montoLimite === 0) {
-        setModalTipoTope('TOTAL');
-        setModalMontoLimite(0);
-      } else {
-        setModalTipoTope('LIMITE');
-        setModalMontoLimite(celda.montoLimite);
-      }
+    if (celda.estaBloqueado && (celda.montoLimite === 0 || (celda.montoLimite !== null && celda.montoLimite !== undefined && celda.montoLimite <= celda.totalVendido))) {
+      setModalTipoTope('TOTAL');
+      setModalMontoLimite(celda.totalVendido || 0);
+    } else if (celda.montoLimite !== undefined && celda.montoLimite !== null && celda.montoLimite > 0) {
+      setModalTipoTope('LIMITE');
+      setModalMontoLimite(celda.montoLimite);
     } else {
       setModalTipoTope('LIMITE');
       setModalMontoLimite(1600);
@@ -148,19 +146,26 @@ export const CuadriculaRiesgoPage: React.FC = () => {
     if (!sorteoSeleccionado || !numeroModal) return;
     setActionLoading(true);
     try {
-      const limiteNum = modalTipoTope === 'TOTAL' ? 0 : (Number(modalMontoLimite) || 0);
+      // Corte Total fija el límite en la cantidad exacta ya vendida (o 0 si no hay ventas)
+      // para impedir que se ingrese ni un solo peso más.
+      const limiteNum = modalTipoTope === 'TOTAL' 
+        ? (numeroModal.totalVendido || 0) 
+        : (Number(modalMontoLimite) || 0);
+
       await api.post(`/sorteos/${sorteoSeleccionado}/bloquear-numero`, {
         numero: numeroModal.numero,
         alcance: modalAlcance,
         zonaId: modalAlcance === 'POR_ZONA' && modalZonaId ? Number(modalZonaId) : undefined,
         vendedorId: modalAlcance === 'POR_VENDEDOR' && modalVendedorId ? modalVendedorId : undefined,
         montoLimite: limiteNum,
-        motivo: modalMotivo || (limiteNum > 0 ? `Tope de venta máximo: $${limiteNum}` : 'Bloqueo total')
+        motivo: modalMotivo || (modalTipoTope === 'TOTAL' 
+          ? `Corte total en $${limiteNum.toFixed(2)} (venta cerrada)` 
+          : `Tope de venta máximo: $${limiteNum.toFixed(2)}`)
       });
 
-      toast.success(limiteNum > 0 
-        ? `Tope de $${limiteNum} aplicado al número #${numeroModal.numero}.` 
-        : `Número #${numeroModal.numero} bloqueado totalmente.`);
+      toast.success(modalTipoTope === 'TOTAL' 
+        ? `Corte total aplicado al #${numeroModal.numero}: venta cerrada en $${limiteNum.toFixed(2)}.` 
+        : `Tope de venta de $${limiteNum} aplicado al número #${numeroModal.numero}.`);
       setNumeroModal(null);
       await cargarCuadricula(
         sorteoSeleccionado,
@@ -236,6 +241,11 @@ export const CuadriculaRiesgoPage: React.FC = () => {
   ];
 
   const totalBloqueados = cuadriculaData?.cuadricula?.filter(c => c.estaBloqueado).length || 0;
+
+  const zonaActiva = zonas.find(z => z.id.toString() === (modalAlcance === 'POR_ZONA' ? modalZonaId : zonaFiltro !== 'all' ? zonaFiltro : '')) || zonas[0];
+  const coeficienteActual = Number(zonaActiva?.coeficientePremio || 70);
+  const montoLimiteActual = modalTipoTope === 'TOTAL' ? (numeroModal?.totalVendido || 0) : (Number(modalMontoLimite) || 0);
+  const riesgoPremioCalculado = Math.round(montoLimiteActual * coeficienteActual);
 
   return (
     <div className="space-y-2.5">
@@ -359,42 +369,48 @@ export const CuadriculaRiesgoPage: React.FC = () => {
                           <td
                             onClick={() => handleOpenModal(celda)}
                             className="w-[45px] text-center font-black text-xs font-mono border-r-2 border-black dark:border-slate-500 cursor-pointer bg-[#00BCD4] text-black hover:opacity-85 transition-opacity px-1 py-0.5 select-none"
-                            title={`Número #${celda.numero} - Haz clic para configurar límite de venta o bloqueo`}
+                            title={`Número #${celda.numero} - Clic para fijar límite de venta o corte`}
                           >
-                            <div className="flex items-center justify-center gap-0.5">
-                              {isBloqueado && (celda.montoLimite === 0 || celda.montoLimite === null) && (
-                                <Lock className="w-2.5 h-2.5 text-red-700 shrink-0" />
-                              )}
-                              <span>{celda.numero}</span>
-                            </div>
+                            <span>{celda.numero}</span>
                           </td>
 
-                          {/* Subcolumna 2: Límite / Tope de Venta (Texto Rojo Bold, Borde separador entre bloques de columnas) */}
+                          {/* Subcolumna 2: Cantidad Vendida + Límite / Tope de Venta al lado derecho */}
                           <td
                             onClick={() => handleOpenModal(celda)}
-                            className={`text-center font-black text-xs font-mono cursor-pointer bg-white dark:bg-slate-900 text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors px-1 py-0.5 select-none ${
+                            className={`cursor-pointer bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors px-1 py-0.5 select-none ${
                               !isLastCol ? 'border-r-2 border-black dark:border-slate-500' : ''
                             }`}
                             title={
-                              celda.montoLimite !== undefined && celda.montoLimite !== null
-                                ? `Tope Máximo: $${celda.montoLimite} | Vendido: $${celda.totalVendido.toFixed(2)} | Alcance: ${celda.alcanceBloqueo || 'Global'}`
+                              isBloqueado
+                                ? (celda.montoLimite === 0 || (celda.montoLimite !== null && celda.montoLimite !== undefined && celda.montoLimite <= celda.totalVendido))
+                                  ? `Corte Total Activo: $${celda.totalVendido.toFixed(2)} (Venta cerrada) | Alcance: ${celda.alcanceBloqueo || 'Global'}`
+                                  : `Vendido: $${celda.totalVendido.toFixed(2)} | Límite Máximo: $${celda.montoLimite} | Alcance: ${celda.alcanceBloqueo || 'Global'}`
                                 : hasBet
-                                ? `Apostado: $${celda.totalVendido.toFixed(2)} | Riesgo: $${celda.riesgoEstimadoPremio.toFixed(0)}`
-                                : `Número #${celda.numero} (Sin límite configurado)`
+                                ? `Vendido: $${celda.totalVendido.toFixed(2)} | Exposición Premio: $${celda.riesgoEstimadoPremio.toFixed(0)}`
+                                : `Número #${celda.numero} (Sin ventas ni límite)`
                             }
                           >
-                            {(() => {
-                              if (celda.montoLimite !== undefined && celda.montoLimite !== null) {
-                                if (celda.montoLimite === 0) {
-                                  return <span className="text-[10px] text-red-600 dark:text-red-400 font-bold">BLOQ</span>;
-                                }
-                                return Math.round(celda.montoLimite);
-                              }
-                              if (hasBet) {
-                                return Math.round(celda.totalVendido);
-                              }
-                              return '';
-                            })()}
+                            <div className="flex items-center justify-between w-full h-full font-mono font-bold leading-none px-1">
+                              {/* Cantidad que se ha vendido de ese número */}
+                              <span className="text-xs text-slate-900 dark:text-slate-100 font-bold truncate">
+                                {hasBet ? Math.round(celda.totalVendido) : ''}
+                              </span>
+
+                              {/* Límite al lado en Rojo (o Candado si es Corte Total, NUNCA 'BLOQ') */}
+                              {isBloqueado && (
+                                <div className="flex items-center gap-0.5 text-red-600 dark:text-red-400 font-black text-[11px] shrink-0 ml-auto">
+                                  {celda.montoLimite !== null && celda.montoLimite !== undefined && celda.montoLimite > 0 && celda.montoLimite > celda.totalVendido ? (
+                                    <span title={`Límite que no debe exceder: $${celda.montoLimite}`}>
+                                      {hasBet ? `/${Math.round(celda.montoLimite)}` : Math.round(celda.montoLimite)}
+                                    </span>
+                                  ) : (
+                                    <span title={`Corte Total en $${celda.totalVendido.toFixed(2)}`} className="flex items-center">
+                                      <Lock className="w-2.5 h-2.5 text-red-600 dark:text-red-400" />
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </td>
                         </React.Fragment>
                       );
@@ -440,7 +456,9 @@ export const CuadriculaRiesgoPage: React.FC = () => {
                   <div className="flex items-center justify-between text-amber-800 dark:text-amber-300 text-xs font-bold">
                     <span className="flex items-center gap-1.5">
                       <Lock className="w-3.5 h-3.5" />
-                      Estado: {numeroModal.montoLimite && numeroModal.montoLimite > 0 ? `Tope Máximo Activo ($${numeroModal.montoLimite})` : 'Corte Total (Bloqueado)'}
+                      Estado: {numeroModal.montoLimite !== null && numeroModal.montoLimite !== undefined && numeroModal.montoLimite > 0 && numeroModal.montoLimite > numeroModal.totalVendido
+                        ? `Tope de Venta ($${numeroModal.montoLimite})`
+                        : `Corte Total Activo ($${(numeroModal.montoLimite ?? numeroModal.totalVendido).toFixed(2)})`}
                     </span>
                     <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-amber-200/60 dark:bg-amber-900/60 font-mono">
                       {numeroModal.alcanceBloqueo || 'Global'}
@@ -464,7 +482,9 @@ export const CuadriculaRiesgoPage: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setModalTipoTope('LIMITE');
-                      if (!modalMontoLimite || Number(modalMontoLimite) === 0) setModalMontoLimite(1600);
+                      if (!modalMontoLimite || Number(modalMontoLimite) <= numeroModal.totalVendido) {
+                        setModalMontoLimite(1600);
+                      }
                     }}
                     className={`py-2 px-3 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                       modalTipoTope === 'LIMITE'
@@ -478,7 +498,7 @@ export const CuadriculaRiesgoPage: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setModalTipoTope('TOTAL');
-                      setModalMontoLimite(0);
+                      setModalMontoLimite(numeroModal.totalVendido || 0);
                     }}
                     className={`py-2 px-3 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                       modalTipoTope === 'TOTAL'
@@ -486,16 +506,41 @@ export const CuadriculaRiesgoPage: React.FC = () => {
                         : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
                     }`}
                   >
-                    Corte Total ($0)
+                    Corte Total (Cerrar Venta)
                   </button>
                 </div>
               </div>
+
+              {/* Explicación de Corte Total */}
+              {modalTipoTope === 'TOTAL' && (
+                <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 text-xs space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-rose-700 dark:text-rose-400">
+                    <Lock className="w-4 h-4 shrink-0" />
+                    <span>Corte Total Inmediato</span>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-300 text-xs leading-relaxed">
+                    {numeroModal.totalVendido > 0 ? (
+                      <>
+                        El límite se fijará en la cantidad exacta ya vendida: <strong className="font-mono text-rose-600 dark:text-rose-400">${numeroModal.totalVendido.toFixed(2)}</strong>.
+                        <br />
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Se mantendrá visible la cantidad vendida en la cuadrícula y <strong>no se podrá ingresar ni un peso más</strong> para este número.
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        El límite se fijará en <strong>$0.00</strong> (sin ventas previas). Este número quedará cerrado para que nadie pueda apostarlo.
+                      </>
+                    )}
+                  </p>
+                </div>
+              )}
 
               {/* Monto Límite si es Tope */}
               {modalTipoTope === 'LIMITE' && (
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                    Monto Límite de Venta ($)
+                    Monto Límite de Venta ($ Apostado)
                   </label>
                   <input
                     type="number"
@@ -528,6 +573,31 @@ export const CuadriculaRiesgoPage: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Desglose Financiero: Monto de Venta vs Premio Máximo (x70) */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-slate-500 dark:text-slate-400">Tipo de Control:</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Por Monto de Venta (Apuesta)</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200 dark:border-slate-700">
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Tope de Venta (Apuesta):</span>
+                    <p className="font-mono font-black text-sm text-slate-900 dark:text-white">
+                      ${montoLimiteActual.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-rose-500">Premio Máx. a Pagar (x{coeficienteActual}):</span>
+                    <p className="font-mono font-black text-sm text-rose-600 dark:text-rose-400">
+                      ${riesgoPremioCalculado.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                  * Este límite restringe el <strong>dinero que pagan los clientes</strong> al apostar. Al pagar a razón de <strong>{coeficienteActual} a 1</strong>, un tope de venta de ${montoLimiteActual.toLocaleString('en-US')} asegura que la banca nunca pagará más de ${riesgoPremioCalculado.toLocaleString('en-US')} en premios si cae el #{numeroModal.numero}.
+                </p>
+              </div>
 
               {/* Alcance del Bloqueo / Límite */}
               <div>
