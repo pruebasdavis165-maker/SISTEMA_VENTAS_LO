@@ -22,6 +22,7 @@ import { useToastStore } from '../store/useToastStore';
 import { CustomSelect } from '../components/common/CustomSelect';
 import { CustomDatePicker } from '../components/common/CustomDatePicker';
 import { CustomDateRangePicker, DateRange } from '../components/common/CustomDateRangePicker';
+import { ConfirmModal } from '../components/common/ConfirmModal';
 
 const getLocalDateString = (d: Date = new Date()) => {
   const year = d.getFullYear();
@@ -83,6 +84,23 @@ export const SorteosPage: React.FC = () => {
   const [horarioDiasSemana, setHorarioDiasSemana] = useState('L,M,X,J,V,S,D');
   const [horarioActivo, setHorarioActivo] = useState(true);
   const [savingHorario, setSavingHorario] = useState(false);
+
+  // Modal de Confirmación Estilizado (Reemplazo de window.confirm)
+  const [confirmModalState, setConfirmModalState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm: () => Promise<void>;
+    isLoading: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: 'Eliminar',
+    onConfirm: async () => {},
+    isLoading: false,
+  });
 
   const loadData = async () => {
     try {
@@ -239,17 +257,26 @@ export const SorteosPage: React.FC = () => {
     }
   };
 
-  const handleDeleteSorteo = async (sorteoId: number) => {
-    if (!window.confirm('¿Deseas eliminar o cancelar este sorteo del día? Si ya tiene ventas, será cancelado para mantener la auditoría.')) {
-      return;
-    }
-    try {
-      const res = await api.delete<{ mensaje: string }>(`/sorteos/${sorteoId}`);
-      toast.success(res.data?.mensaje || 'Sorteo procesado exitosamente.');
-      await loadData();
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'No se pudo eliminar el sorteo.');
-    }
+  const handleDeleteSorteo = (sorteoId: number) => {
+    setConfirmModalState({
+      isOpen: true,
+      title: '¿Eliminar o Cancelar Sorteo del Día?',
+      message: 'Si este sorteo ya cuenta con ventas y boletos emitidos, se pasará a estado CANCELADO para proteger la auditoría contable. Si aún no tiene ventas, se eliminará permanentemente.',
+      confirmText: 'Eliminar Sorteo',
+      isLoading: false,
+      onConfirm: async () => {
+        try {
+          setConfirmModalState(prev => ({ ...prev, isLoading: true }));
+          const res = await api.delete<{ mensaje: string }>(`/sorteos/${sorteoId}`);
+          toast.success(res.data?.mensaje || 'Sorteo procesado exitosamente.');
+          setConfirmModalState(prev => ({ ...prev, isOpen: false, isLoading: false }));
+          await loadData();
+        } catch (err: any) {
+          toast.error(err.response?.data?.detail || 'No se pudo eliminar el sorteo.');
+          setConfirmModalState(prev => ({ ...prev, isLoading: false }));
+        }
+      }
+    });
   };
 
   const handleOpenCreateHorario = () => {
@@ -316,17 +343,26 @@ export const SorteosPage: React.FC = () => {
     }
   };
 
-  const handleDeleteHorario = async (id: number) => {
-    if (!window.confirm('¿Deseas eliminar este turno recurrente? Si ya tiene sorteos pasados, quedará desactivado.')) {
-      return;
-    }
-    try {
-      await api.delete(`/sorteos/horarios/${id}`);
-      toast.success('Horario eliminado / desactivado.');
-      await loadData();
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'No se pudo eliminar el horario.');
-    }
+  const handleDeleteHorario = (id: number, nombre?: string) => {
+    setConfirmModalState({
+      isOpen: true,
+      title: `¿Eliminar Turno Recurrente${nombre ? `: ${nombre}` : ''}?`,
+      message: 'Si este horario ya fue utilizado para generar sorteos históricos, quedará DESACTIVADO de forma segura para no afectar registros contables. Si es una plantilla nueva, se borrará definitivamente.',
+      confirmText: 'Eliminar Turno',
+      isLoading: false,
+      onConfirm: async () => {
+        try {
+          setConfirmModalState(prev => ({ ...prev, isLoading: true }));
+          await api.delete(`/sorteos/horarios/${id}`);
+          toast.success('Horario eliminado / desactivado.');
+          setConfirmModalState(prev => ({ ...prev, isOpen: false, isLoading: false }));
+          await loadData();
+        } catch (err: any) {
+          toast.error(err.response?.data?.detail || 'No se pudo eliminar el horario.');
+          setConfirmModalState(prev => ({ ...prev, isLoading: false }));
+        }
+      }
+    });
   };
 
   const formatHoraSorteo = (horaIso: string) => {
@@ -739,7 +775,7 @@ export const SorteosPage: React.FC = () => {
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => handleDeleteHorario(h.id)}
+                      onClick={() => handleDeleteHorario(h.id, h.nombre)}
                       className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition-colors cursor-pointer"
                       title="Eliminar Horario"
                     >
@@ -1262,6 +1298,18 @@ export const SorteosPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmación Estilizado */}
+      <ConfirmModal
+        isOpen={confirmModalState.isOpen}
+        onClose={() => setConfirmModalState(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmModalState.onConfirm}
+        title={confirmModalState.title}
+        message={confirmModalState.message}
+        confirmText={confirmModalState.confirmText || 'Eliminar'}
+        isLoading={confirmModalState.isLoading}
+        variant="danger"
+      />
     </div>
   );
 };
