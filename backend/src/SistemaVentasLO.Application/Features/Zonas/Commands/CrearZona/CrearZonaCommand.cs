@@ -19,7 +19,8 @@ public class CrearZonaCommandValidator : AbstractValidator<CrearZonaCommand>
             .MaximumLength(100).WithMessage("El nombre de la zona no puede superar 100 caracteres.");
 
         RuleFor(x => x.CoeficientePremio)
-            .GreaterThan(0).WithMessage("El coeficiente de premio debe ser un número positivo mayor a 0 (ej. 70.00, 80.00, 90.00).");
+            .GreaterThan(0).WithMessage("El coeficiente de premio debe ser un número positivo mayor a 0.")
+            .LessThanOrEqualTo(99).WithMessage("El coeficiente de premio no puede ser mayor a 99.");
     }
 }
 

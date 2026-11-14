@@ -41,8 +41,9 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// 3. Controladores
+// 3. Controladores y Background Services
 builder.Services.AddControllers();
+builder.Services.AddHostedService<SistemaVentasLO.WebApi.Services.GeneradorSorteosDiariosHostedService>();
 builder.Services.AddEndpointsApiExplorer();
 
 // 4. Documentación Swagger / OpenAPI

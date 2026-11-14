@@ -40,5 +40,9 @@ public record GenerarSorteosDiaRequest(
 );
 
 public record CambiarEstadoSorteoRequest(
-    string Estado
-);
+    string? Estado = null,
+    string? NuevoEstado = null
+)
+{
+    public string ObtenerEstado() => !string.IsNullOrWhiteSpace(Estado) ? Estado : (!string.IsNullOrWhiteSpace(NuevoEstado) ? NuevoEstado : "ABIERTO");
+};

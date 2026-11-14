@@ -45,7 +45,7 @@ public class ZonasController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> Update(int id, [FromBody] ActualizarZonaRequest request)
     {
-        var result = await Mediator.Send(new ActualizarZonaCommand(id, request.Nombre, request.CoeficientePremio));
+        var result = await Mediator.Send(new ActualizarZonaCommand(id, request.Nombre, request.CoeficientePremio, request.Estado));
         return Ok(result);
     }
 

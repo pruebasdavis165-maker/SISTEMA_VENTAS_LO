@@ -1,139 +1,117 @@
-# SISTEMA_VENTAS_LO
+# SISTEMA VENTAS LO
 
-Plataforma cliente-servidor de alta disponibilidad para gestión transaccional, control operativo y reportería financiera.
-
----
-
-## 🏗️ Arquitectura del Sistema
-
-El ecosistema está construido bajo una arquitectura multicapa desacoplada y contenerizada:
-
-- **Backend:** .NET 8 Web API con Clean Architecture (Domain, Application, Infrastructure, WebApi), CQRS mediante MediatR, Entity Framework Core y validaciones fluidas (FluentValidation).
-- **Base de Datos:** PostgreSQL con esquemas relacionales normalizados, índices B-Tree para consultas concurrentes de alta frecuencia y transaccionalidad ACID.
-- **Frontend Web:** React 18 con Vite, TypeScript, TailwindCSS, Zustand y Lucide Icons para el panel administrativo.
-- **Aplicación Móvil:** React Native (Bare workflow / CLI) con TypeScript, React Navigation, NativeWind y comunicación Bluetooth para terminales portátiles.
-- **DevOps:** Docker Compose con perfiles para desarrollo, Staging y pipeline automatizado en GitHub Actions con dos entornos aislados.
+Plataforma transaccional de alta disponibilidad para gestión operativa, control de límites y reportería contable.
 
 ---
 
-## 🚀 Requisitos Previos
+## Modos de Ejecución y Levantamiento
 
-Asegúrate de tener instalados los siguientes componentes en tu máquina local:
+### 1. Ejecución Rápida con Doble Clic (Windows)
+Puedes iniciar todo el sistema con un solo clic utilizando cualquiera de los siguientes lanzadores incluidos en la raíz:
+- **`Launcher.exe`**: Ejecutable portable independiente.
+- **`iniciar-sistema.bat`**: Script automatizado por lotes.
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (con Docker Compose v2+)
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- [Node.js](https://nodejs.org/) (versión 20 LTS o 22 LTS)
-- [Git](https://git-scm.com/)
-
----
-
-## ⚡ Inicio Rápido (Levantamiento con Docker)
-
-La forma más rápida de ejecutar el ecosistema completo (Base de Datos, Backend y Frontend Web) es mediante Docker Compose:
-
-1. **Clonar el repositorio:**
-   ```bash
-   git clone https://github.com/pruebasdavis165-maker/SISTEMA_VENTAS_LO.git
-   cd SISTEMA_VENTAS_LO
-   ```
-
-2. **Iniciar todos los servicios:**
-   ```bash
-   docker compose up -d --build
-   ```
-
-3. **Verificar el estado de los contenedores:**
-   ```bash
-   docker compose ps
-   ```
-
-4. **Acceder a los servicios:**
-   - **Frontend Web Administrativo:** `http://localhost:5173`
-   - **Backend API & Swagger:** `http://localhost:5000/swagger`
-   - **Base de Datos PostgreSQL:** `localhost:5432` (Base de datos: `ventas_lo_db`)
+Ambos comandos inician los contenedores, configuran la base de datos y abren automáticamente la aplicación en tu navegador.
 
 ---
 
-## 🛠️ Levantamiento Local para Desarrollo
+### 2. Levantamiento con Docker Compose (Recomendado)
+Para desplegar y compilar todos los servicios en segundo plano:
 
-Si deseas ejecutar y depurar los proyectos directamente sin contenedores:
+```bash
+docker compose up -d --build
+```
 
-### 1. Base de Datos (PostgreSQL)
-Puedes usar el servicio de PostgreSQL de Docker:
+#### Puertos y Direcciones de Acceso
+- **Plataforma Web Administrativa:** [http://localhost:3000](http://localhost:3000)
+- **API REST & Documentación Swagger:** [http://localhost:5000/swagger](http://localhost:5000/swagger)
+- **Base de Datos PostgreSQL:** `localhost:5432` (Base de datos: `ventas_lo_db`)
+- **pgAdmin (Opcional):** [http://localhost:5050](http://localhost:5050)
+
+#### Credenciales Administrativas por Defecto
+- **Usuario:** `admin`
+- **Contraseña:** `Admin123*`
+
+---
+
+### 3. Levantamiento Local para Desarrollo (Sin Contenedores)
+
+#### Base de Datos
 ```bash
 docker compose up -d postgres
 ```
 
-### 2. Backend (.NET 8 Web API)
+#### Backend (.NET 8 Web API)
 ```bash
 cd backend
 dotnet restore
 dotnet build SistemaVentasLO.sln
 dotnet run --project src/SistemaVentasLO.WebApi
 ```
-La API estará disponible en `http://localhost:5000` y Swagger en `http://localhost:5000/swagger`.
+Acceso a la API: `http://localhost:5000/swagger`
 
-### 3. Frontend Web (React + Vite)
+#### Frontend Web (React + Vite)
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-La aplicación web estará disponible en `http://localhost:5173`.
+Acceso al panel: `http://localhost:5173`
 
 ---
 
-## 📖 Guía de Uso del Sistema
+## Módulos y Capacidades del Sistema
 
-### 🔐 1. Autenticación y Control de Acceso (RBAC)
-- **Roles del Sistema:**
-  - `ADMIN`: Acceso completo a parametrización, zonas, vendedores, programación de sorteos, matrices de riesgo y liquidación contable.
-  - `VENDEDOR`: Acceso operativo a emisión de boletos, consulta de límites, historial de turno y liquidación en punto.
-- Inicia sesión con credenciales autorizadas para obtener el token JWT que protege todas las rutas y peticiones.
+### Apariencia y Accesibilidad (Modo Claro / Modo Oscuro)
+- El sistema cuenta con un conmutador integrado de **Modo Oscuro** y **Modo Claro** en la barra superior.
+- Paleta visual sólida de alto contraste, sin degradados, con tipografías legibles y selectores de formulario nativos estilizados.
 
-### 🏢 2. Gestión de Zonas y Parámetros
-- Navega a **Zonas** para definir las demarcaciones comerciales y configurar los coeficientes multiplicadores aplicables a las jugadas emitidas en cada territorio.
+### Gestión de Zonas y Coeficientes
+- Definición de sucursales o zonas comerciales.
+- Calibración de coeficientes multiplicadores con validación estricta de hasta **99.00**.
+- Activación y desactivación inmediata de zonas directamente desde la tabla o mediante el modal de edición.
 
-### 👥 3. Gestión de Vendedores y Saldos
-- Accede al módulo de **Vendedores** para dar de alta usuarios de calle, asignar su zona comercial, fijar sus comisiones de venta y realizar recargas de saldo o cupo operativo en tiempo real.
+### Control de Vendedores y Esquema de Ganancias
+- **Venta Abierta:** Los operadores de calle no requieren prepago de saldo para emitir boletos.
+- **Esquema de Comisión por Porcentaje (%):** Las ganancias del vendedor se calculan sobre el volumen total vendido (por ejemplo, con 10% de comisión sobre $2,000 vendidos, la comisión es $200).
+- **Limitadores por Número:** El administrador puede asignar topes máximos de dinero permitidos por número (a todos los dígitos o números individuales específicos como el 00, 10 o 92).
+- **Validación Oficial de Nicaragua:** Validación de formato oficial de Cédula (ej. `001-120595-0002B`) y números telefónicos de 8 dígitos sin prefijo internacional.
 
-### ⏱️ 4. Programación y Monitoreo de Sorteos
-- Desde el módulo de **Sorteos** se gestionan las rondas diarias programadas (11:00 AM, 3:00 PM, 6:00 PM, 9:00 PM) y sorteos extraordinarios.
-- **Regla de Congelamiento Automático:** Las ventas se bloquean estrictamente 5 minutos antes de la hora fijada del sorteo.
-- **Reapertura:** Las ventas se reanudan 10 minutos posteriores a la conclusión de la ronda.
+### Sorteos y Ventas Adelantadas
+- **Generación Automática a las 5:00 AM:** Un servicio en segundo plano programa automáticamente los horarios del día.
+- **Venta Adelantada:** Los vendedores pueden emitir boletos para cualquier sorteo programado del día (por ejemplo, vender a las 8:00 AM para la ronda de las 9:00 PM).
+- **Control de Horarios y Bloqueo:** Edición de hora de cierre y bloqueo preventivo automático 5 minutos antes del turno.
 
-### 🛡️ 5. Matriz de Control de Riesgos (00-99)
-- El panel de **Control de Riesgo** renderiza una cuadrícula 10x10 (posiciones `00` a `99`) con mapa de calor del dinero apostado.
-- Permite a los directores aplicar bloqueos preventivos (Globales o por Zona) sobre números específicos para limitar la exposición financiera de la empresa.
+### Matriz de Control de Riesgo 00-99
+- Visualización de las 100 posiciones numéricas organizada en **4 columnas estructurales**:
+  - **Columna 1:** 00 al 24
+  - **Columna 2:** 25 al 49
+  - **Columna 3:** 50 al 74
+  - **Columna 4:** 75 al 99
+- Mapa de intensidades de riesgo por volumen recaudado y bloqueo preventivo de números con un solo clic.
 
-### 🏆 6. Cierre y Liquidación Oficial
-- Al concluir una ronda, el administrador ingresa el número ganador oficial de dos dígitos (`00` a `99`) en el módulo de **Liquidación**.
-- El motor clasifica automáticamente las jugadas en `PREMIADO` o `NO_PREMIADO` (con ventana de 30 días para reclamo), liquida comisiones comerciales y descuenta los balances correspondientes del saldo del vendedor.
+### Cierre Oficial y Liquidación Financiera
+- Declaración del número ganador oficial (00 al 99).
+- Liquidación automática: cálculo de premios pagados, comisiones comerciales devengadas y rentabilidad neta final.
 
-### 🧾 7. Auditoría y Control Antifraude
-- En el módulo de **Auditoría**, consulta y busca cualquier boleto mediante su identificador o código hash único.
-- El visor de recibo permite generar reimpresiones térmicas, incrementando secuencialmente el contador oficial con las leyendas reglamentarias `COPIA 1`, `COPIA 2`, evitando reclamos duplicados.
+### Auditoría y Control de Copias
+- Búsqueda y trazabilidad de boletos mediante identificador y hash criptográfico.
+- Módulo de reimpresión reglamentaria con marcas progresivas (`COPIA 1`, `COPIA 2`) para control antifraude.
 
 ---
 
-## 🧪 Ejecución de Pruebas y Compilación
+## Compilación y Pruebas
 
-- **Compilar backend:**
+- **Compilar backend (.NET 8):**
   ```bash
   dotnet build backend/SistemaVentasLO.sln
   ```
-- **Validar TypeScript y compilar frontend:**
+- **Ejecutar pruebas unitarias:**
+  ```bash
+  dotnet test backend/SistemaVentasLO.sln
+  ```
+- **Compilar frontend (TypeScript + Vite):**
   ```bash
   cd frontend
   npm run build
   ```
-
----
-
-## 🔒 Protocolo de Desarrollo y CI/CD
-- **Flujo de Git:** Todo cambio se desarrolla en ramas de feature aisladas (`feature/<numero>-<descripcion>`) creadas a partir de un Issue.
-- **Commits Semánticos:** Se exige el formato `feat:`, `fix:`, `chore:`, `ci:`, `test:`.
-- **Merge Seguro:** Todo Pull Request hacia `main` debe superar la compilación automatizada en GitHub Actions y cerrar su issue correspondiente mediante `Closes #<numero>`.
-- **Despliegue Continuo:**
-  - **Planeta Staging:** Despliegue automático tras fusión en `main` con base de datos de pruebas aislada.
-  - **Planeta Producción:** Despliegue protegido que requiere aprobación manual e inyección de credenciales seguras.

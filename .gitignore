@@ -11,6 +11,7 @@ bin/
 obj/
 *.user
 *.suo
+*.pdb
 *.userosscache
 *.sln.docstates
 packages/

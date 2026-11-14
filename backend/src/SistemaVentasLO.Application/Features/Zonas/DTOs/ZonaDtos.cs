@@ -17,7 +17,8 @@ public record CrearZonaRequest(
 
 public record ActualizarZonaRequest(
     string Nombre,
-    decimal CoeficientePremio
+    decimal CoeficientePremio,
+    bool? Estado = null
 );
 
 public record CambiarEstadoZonaRequest(
