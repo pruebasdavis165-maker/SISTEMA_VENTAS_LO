@@ -78,6 +78,11 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<BloqueoNumero>(entity =>
+        {
+            entity.Property(e => e.MontoLimite).HasPrecision(12, 2).HasColumnName("monto_limite");
+        });
+
         modelBuilder.Entity<DetalleJugada>(entity =>
         {
             entity.Property(e => e.Monto).HasPrecision(12, 2);

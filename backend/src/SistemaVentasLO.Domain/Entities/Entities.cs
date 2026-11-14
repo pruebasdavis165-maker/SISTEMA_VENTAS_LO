@@ -76,6 +76,7 @@ public class BloqueoNumero : BaseEntity<long>
     public Zona? Zona { get; set; }
     public Guid? VendedorId { get; set; }
     public Usuario? Vendedor { get; set; }
+    public decimal MontoLimite { get; set; } = 0; // 0 = Bloqueo total, > 0 = Tope de venta máximo permitido
     public string? Motivo { get; set; }
     public Guid CreadoPor { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

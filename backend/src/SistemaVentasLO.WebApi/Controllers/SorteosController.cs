@@ -242,10 +242,11 @@ public class SorteosController : ApiControllerBase
             request.Alcance,
             request.ZonaId,
             request.VendedorId,
+            request.MontoLimite,
             request.Motivo,
             adminId
         ));
-        return Ok(new { BloqueoId = result, Mensaje = $"Número {request.Numero} bloqueado exitosamente." });
+        return Ok(new { BloqueoId = result, Mensaje = $"Límite/bloqueo para el número {request.Numero} configurado exitosamente." });
     }
 
     [HttpDelete("{id:long}/desbloquear-numero/{numero}")]

@@ -4,6 +4,7 @@ export interface NumeroCuadricula {
   cantidadJugadas: number;
   riesgoEstimadoPremio: number;
   estaBloqueado: boolean;
+  montoLimite?: number | null;
   alcanceBloqueo?: string | null;
   motivoBloqueo?: string | null;
 }
@@ -23,5 +24,6 @@ export interface BloquearNumeroRequest {
   alcance: 'GLOBAL' | 'POR_ZONA' | 'POR_VENDEDOR';
   zonaId?: number;
   vendedorId?: string;
+  montoLimite?: number;
   motivo?: string;
 }
