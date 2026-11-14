@@ -8,10 +8,16 @@
   }
 
   select {
-    @apply bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-700;
+    @apply bg-white text-slate-900 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-800;
   }
 
-  option {
-    @apply bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100;
+  select option {
+    background-color: #ffffff;
+    color: #0f172a;
+  }
+
+  .dark select option {
+    background-color: #0f172a;
+    color: #f8fafc;
   }
 }

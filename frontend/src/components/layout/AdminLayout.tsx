@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useThemeStore } from '../../store/useThemeStore';
+import { ToastContainer } from '../common/ToastContainer';
 
 export const AdminLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -40,30 +41,47 @@ export const AdminLayout: React.FC = () => {
   ];
 
   return (
-    <div className="flex h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden">
+    <div className="flex h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 overflow-hidden font-sans">
+      {/* Notificaciones globales en esquina superior derecha */}
+      <ToastContainer />
+
       {/* Sidebar Lateral */}
       <aside className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 ease-in-out md:static ${
         sidebarOpen ? 'w-64' : 'w-20'
       }`}>
         {/* Brand Header */}
-        <div className="flex items-center justify-between h-16 px-4 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-600 text-white font-black text-xl shrink-0 shadow-sm">
-              LO
-            </div>
-            {sidebarOpen && (
+        <div className={`flex items-center h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-all ${
+          sidebarOpen ? 'justify-between px-4' : 'justify-center px-2'
+        }`}>
+          {sidebarOpen ? (
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-600 text-white font-black text-xl shrink-0 shadow-sm">
+                LO
+              </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-bold text-sm tracking-wide text-slate-900 dark:text-white truncate">VENTAS LO</span>
                 <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold tracking-wider uppercase">Plataforma Web</span>
               </div>
-            )}
-          </div>
-          <button 
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden md:block"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              title="Expandir barra lateral"
+              className="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-600 text-white font-black text-xl shrink-0 hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer"
+            >
+              LO
+            </button>
+          )}
+
+          {sidebarOpen && (
+            <button 
+              onClick={() => setSidebarOpen(false)}
+              title="Colapsar barra lateral"
+              className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden md:block cursor-pointer"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Navigation Items */}
@@ -74,8 +92,11 @@ export const AdminLayout: React.FC = () => {
               <NavLink
                 key={item.path}
                 to={item.path}
+                title={!sidebarOpen ? item.label : undefined}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 group ${
+                  `flex items-center ${
+                    sidebarOpen ? 'gap-3 px-3.5 py-2.5 justify-start' : 'justify-center p-2.5'
+                  } rounded-xl font-medium text-sm transition-all duration-150 group ${
                     isActive
                       ? 'bg-indigo-50 dark:bg-indigo-600/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30 font-semibold'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
@@ -95,29 +116,47 @@ export const AdminLayout: React.FC = () => {
         </nav>
 
         {/* User Footer Card */}
-        <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40">
-          <div className="flex items-center gap-3 p-2 rounded-xl bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-            <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0">
+        <div className={`border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 ${
+          sidebarOpen ? 'p-3' : 'p-2'
+        }`}>
+          <div className={`flex items-center ${
+            sidebarOpen ? 'gap-3 p-2' : 'flex-col gap-2 p-1.5 justify-center'
+          } rounded-xl bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800`}>
+            <div 
+              title={user?.nombres ? `${user.nombres} ${user.apellidos}` : 'Administrador'}
+              className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0"
+            >
               {user?.nombres ? user.nombres.charAt(0) : 'A'}
             </div>
-            {sidebarOpen && (
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                  {user?.nombres ? `${user.nombres} ${user.apellidos}` : 'Administrador'}
-                </p>
-                <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                  <ShieldCheck className="w-3 h-3" />
-                  <span className="truncate">{user?.rol || 'DIRECTIVO'}</span>
+
+            {sidebarOpen ? (
+              <>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                    {user?.nombres ? `${user.nombres} ${user.apellidos}` : 'Administrador'}
+                  </p>
+                  <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                    <ShieldCheck className="w-3 h-3" />
+                    <span className="truncate">{user?.rol || 'DIRECTIVO'}</span>
+                  </div>
                 </div>
-              </div>
+                <button
+                  onClick={handleLogout}
+                  title="Cerrar Sesión"
+                  className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors ml-auto cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleLogout}
+                title="Cerrar Sesión"
+                className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             )}
-            <button
-              onClick={handleLogout}
-              title="Cerrar Sesión"
-              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors ml-auto"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </aside>
@@ -133,7 +172,7 @@ export const AdminLayout: React.FC = () => {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Panel de Control General</h1>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Panel de Control</h1>
           </div>
 
           <div className="flex items-center gap-3">
@@ -141,7 +180,7 @@ export const AdminLayout: React.FC = () => {
             <button
               onClick={toggleTheme}
               title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors text-xs font-semibold"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors text-xs font-semibold cursor-pointer"
             >
               {theme === 'dark' ? (
                 <>

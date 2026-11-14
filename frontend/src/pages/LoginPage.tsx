@@ -148,8 +148,8 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          <div className="mt-6 text-center text-xs text-slate-500 dark:text-slate-400">
-            <span>Acceso Administrativo Seguro</span>
+          <div className="mt-6 text-center text-xs text-slate-400 dark:text-slate-500 font-mono">
+            <span>SISTEMA DE CONTROL OPERATIVO</span>
           </div>
         </div>
       </div>

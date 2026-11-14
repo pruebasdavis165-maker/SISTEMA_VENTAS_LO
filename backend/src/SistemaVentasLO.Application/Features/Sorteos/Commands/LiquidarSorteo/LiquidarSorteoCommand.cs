@@ -48,8 +48,30 @@ public class LiquidarSorteoCommandHandler : IRequestHandler<LiquidarSorteoComman
         if (sorteo == null)
             throw new DomainException("Sorteo no encontrado.");
 
+        // Si ya estaba liquidado, se permite rectificar el número ganador limpiando la liquidación previa
         if (sorteo.Estado == "LIQUIDADO")
-            throw new DomainException("El sorteo ya ha sido liquidado anteriormente.");
+        {
+            var liquidacionExistente = await _context.Liquidaciones
+                .Include(l => l.DetalleVendedores)
+                .FirstOrDefaultAsync(l => l.SorteoId == sorteo.Id, cancellationToken);
+
+            if (liquidacionExistente != null)
+            {
+                _context.DetalleLiquidacionesVendedor.RemoveRange(liquidacionExistente.DetalleVendedores);
+                _context.Liquidaciones.Remove(liquidacionExistente);
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+
+            foreach (var b in sorteo.Boletos.Where(b => b.Estado != "ANULADO"))
+            {
+                b.Estado = "ACTIVO";
+                foreach (var j in b.Jugadas)
+                {
+                    j.EsGanador = false;
+                    j.PremioCalculado = 0;
+                }
+            }
+        }
 
         // Marcamos el sorteo con el número ganador oficial
         sorteo.NumeroGanador = request.NumeroGanador;

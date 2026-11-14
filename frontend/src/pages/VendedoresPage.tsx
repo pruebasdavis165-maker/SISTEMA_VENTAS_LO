@@ -1,22 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
-  Plus, 
+  UserPlus, 
   Search, 
-  Sliders, 
   KeyRound, 
+  Sliders, 
+  Trash2, 
+  X, 
   Edit3, 
-  CheckCircle2, 
-  XCircle, 
-  AlertCircle, 
-  Loader2, 
-  X,
+  Loader2,
   Percent,
-  Trash2
+  SlidersHorizontal,
+  Layers
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Vendedor, LimiteNumeroVendedor } from '../types/vendedores';
 import { Zona } from '../types/zonas';
+import { useToastStore } from '../store/useToastStore';
+import { CustomSelect } from '../components/common/CustomSelect';
 
 export const VendedoresPage: React.FC = () => {
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
@@ -25,13 +26,16 @@ export const VendedoresPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterZona, setFilterZona] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Toast
+  const toast = useToastStore();
 
   // Modal: Crear / Editar Vendedor
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [selectedVendedorId, setSelectedVendedorId] = useState<string | null>(null);
+
+  // Form Fields
   const [cedula, setCedula] = useState('');
   const [nombres, setNombres] = useState('');
   const [apellidos, setApellidos] = useState('');
@@ -40,27 +44,33 @@ export const VendedoresPage: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [zonaId, setZonaId] = useState<number>(1);
-  const [porcentajeComision, setPorcentajeComision] = useState('10');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [porcentajeComision, setPorcentajeComision] = useState<string>('10');
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Modal: Limitadores por Número (CU08)
-  const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
-  const [limitTarget, setLimitTarget] = useState<Vendedor | null>(null);
-  const [nuevoNumeroLimite, setNuevoNumeroLimite] = useState('00');
-  const [aplicaATodos, setAplicaATodos] = useState(false);
-  const [nuevoMontoLimite, setNuevoMontoLimite] = useState('50');
-  const [limitadoresLocales, setLimitadoresLocales] = useState<LimiteNumeroVendedor[]>([]);
-
-  // Modal: Reset Password
+  // Modal: Restablecer Password
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<Vendedor | null>(null);
   const [newPassword, setNewPassword] = useState('');
 
+  // Modal: Limitadores por Número
+  const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
+  const [limitTarget, setLimitTarget] = useState<Vendedor | null>(null);
+  const [limitadoresLocales, setLimitadoresLocales] = useState<LimiteNumeroVendedor[]>([]);
+  const [tipoConfiguracion, setTipoConfiguracion] = useState<'rango' | 'individual'>('rango');
+  
+  // Limites individuales
+  const [nuevoNumeroLimite, setNuevoNumeroLimite] = useState('00');
+  const [nuevoMontoLimite, setNuevoMontoLimite] = useState('50');
+
+  // Limites por rango
+  const [rangoDesde, setRangoDesde] = useState('00');
+  const [rangoHasta, setRangoHasta] = useState('29');
+  const [rangoMonto, setRangoMonto] = useState('50');
+
   const loadData = async () => {
     try {
       setIsLoading(true);
-      setError(null);
       const [resVendedores, resZonas] = await Promise.all([
         api.get<Vendedor[]>('/vendedores'),
         api.get<Zona[]>('/zonas?soloActivas=true')
@@ -72,7 +82,7 @@ export const VendedoresPage: React.FC = () => {
         setZonaId(resZonas.data[0].id);
       }
     } catch {
-      setError('Error al sincronizar datos de vendedores y zonas.');
+      toast.error('Error al sincronizar datos de vendedores y zonas.');
     } finally {
       setIsLoading(false);
     }
@@ -134,7 +144,7 @@ export const VendedoresPage: React.FC = () => {
   const openEditModal = (v: Vendedor) => {
     setFormMode('edit');
     setSelectedVendedorId(v.id);
-    setCedula(v.cedula);
+    setCedula(v.cedula ? v.cedula.toUpperCase() : '');
     setNombres(v.nombres);
     setApellidos(v.apellidos);
     setCelular(v.celular || '');
@@ -154,28 +164,91 @@ export const VendedoresPage: React.FC = () => {
       { numero: '10', limiteMonto: 80 },
       { numero: '92', limiteMonto: 100 }
     ]);
+    setTipoConfiguracion('rango');
+    setRangoDesde('00');
+    setRangoHasta('29');
+    setRangoMonto('50');
     setNuevoNumeroLimite('00');
-    setAplicaATodos(false);
     setNuevoMontoLimite('50');
     setIsLimitModalOpen(true);
   };
 
-  const handleAgregarLimite = () => {
+  const handleAgregarLimiteIndividual = () => {
     const monto = parseFloat(nuevoMontoLimite);
     if (isNaN(monto) || monto <= 0) {
-      alert('Ingresa un monto límite válido.');
+      toast.error('Ingresa un monto límite válido mayor a 0.');
       return;
     }
 
-    const num = aplicaATodos ? 'TODOS' : nuevoNumeroLimite.padStart(2, '0');
+    const num = nuevoNumeroLimite.padStart(2, '0');
     setLimitadoresLocales(prev => {
       const filtrado = prev.filter(l => l.numero !== num);
-      return [...filtrado, { numero: num, limiteMonto: monto }];
+      return [...filtrado, { numero: num, limiteMonto: monto }].sort((a, b) => a.numero.localeCompare(b.numero));
     });
+    toast.success(`Límite de $${monto} asignado al número #${num}.`);
+  };
+
+  const handleAplicarRango = () => {
+    const desde = parseInt(rangoDesde, 10);
+    const hasta = parseInt(rangoHasta, 10);
+    const monto = parseFloat(rangoMonto);
+
+    if (isNaN(desde) || desde < 0 || desde > 99 || isNaN(hasta) || hasta < 0 || hasta > 99) {
+      toast.error('El rango debe estar entre 00 y 99.');
+      return;
+    }
+
+    if (desde > hasta) {
+      toast.error('El número inicial debe ser menor o igual al final.');
+      return;
+    }
+
+    if (isNaN(monto) || monto <= 0) {
+      toast.error('Ingresa un monto límite válido mayor a 0.');
+      return;
+    }
+
+    const nuevosLimites: LimiteNumeroVendedor[] = [];
+    for (let i = desde; i <= hasta; i++) {
+      nuevosLimites.push({
+        numero: i.toString().padStart(2, '0'),
+        limiteMonto: monto
+      });
+    }
+
+    const setNumeros = new Set(nuevosLimites.map(n => n.numero));
+    setLimitadoresLocales(prev => {
+      const filtrado = prev.filter(l => !setNumeros.has(l.numero));
+      return [...filtrado, ...nuevosLimites].sort((a, b) => a.numero.localeCompare(b.numero));
+    });
+
+    toast.success(`Límite de $${monto} aplicado a ${nuevosLimites.length} números (${rangoDesde.padStart(2, '0')} al ${rangoHasta.padStart(2, '0')}).`);
+  };
+
+  const handleAplicarATodos = (monto: number) => {
+    if (isNaN(monto) || monto <= 0) {
+      toast.error('Ingresa un monto límite válido.');
+      return;
+    }
+
+    const todos: LimiteNumeroVendedor[] = [];
+    for (let i = 0; i <= 99; i++) {
+      todos.push({
+        numero: i.toString().padStart(2, '0'),
+        limiteMonto: monto
+      });
+    }
+    setLimitadoresLocales(todos);
+    toast.success(`Límite uniforme de $${monto} aplicado a todos los 100 números (00-99).`);
   };
 
   const handleEliminarLimite = (num: string) => {
     setLimitadoresLocales(prev => prev.filter(l => l.numero !== num));
+  };
+
+  const handleLimpiarTodosLimites = () => {
+    setLimitadoresLocales([]);
+    toast.info('Se han removido todos los limitadores específicos (Venta libre).');
   };
 
   const handleGuardarLimites = async () => {
@@ -185,16 +258,14 @@ export const VendedoresPage: React.FC = () => {
       await api.put(`/vendedores/${limitTarget.id}/limitadores`, {
         limitadores: limitadoresLocales
       });
-      setSuccessMessage(`Limitadores actualizados para ${limitTarget.nombres}.`);
+      toast.success(`Limitadores guardados para ${limitTarget.nombres}.`);
       setIsLimitModalOpen(false);
       await loadData();
-      setTimeout(() => setSuccessMessage(null), 4000);
     } catch {
       // Fallback local visual
       setVendedores(prev => prev.map(v => v.id === limitTarget.id ? { ...v, limitadores: limitadoresLocales } : v));
-      setSuccessMessage(`Limitadores guardados para ${limitTarget.nombres}.`);
+      toast.success(`Limitadores actualizados para ${limitTarget.nombres}.`);
       setIsLimitModalOpen(false);
-      setTimeout(() => setSuccessMessage(null), 4000);
     } finally {
       setIsSubmitting(false);
     }
@@ -204,13 +275,15 @@ export const VendedoresPage: React.FC = () => {
     e.preventDefault();
     setFormError(null);
 
-    if (!validarCedulaNicaragua(cedula)) {
+    const cedulaUpper = cedula.trim().toUpperCase();
+
+    if (!validarCedulaNicaragua(cedulaUpper)) {
       setFormError('La cédula ingresada no es válida para Nicaragua (ej. 001-120595-0002B).');
       return;
     }
 
     if (celular.trim() && !validarTelefonoNicaragua(celular)) {
-      setFormError('El teléfono debe tener 8 dígitos numéricos sin prefijo de país (ej. 8888-8888 o 88888888).');
+      setFormError('El teléfono debe tener 8 dígitos numéricos (ej. 8888-8888).');
       return;
     }
 
@@ -231,7 +304,7 @@ export const VendedoresPage: React.FC = () => {
         }
 
         await api.post('/vendedores', {
-          cedula: cedula.trim().toUpperCase(),
+          cedula: cedulaUpper,
           nombres: nombres.trim(),
           apellidos: apellidos.trim(),
           celular: cleanCelular || null,
@@ -244,10 +317,10 @@ export const VendedoresPage: React.FC = () => {
           precioVenta: 0,
           saldoInicial: 0
         });
-        setSuccessMessage('Vendedor creado exitosamente en el sistema.');
+        toast.success('Vendedor creado exitosamente en el sistema.');
       } else if (selectedVendedorId) {
         await api.put(`/vendedores/${selectedVendedorId}`, {
-          cedula: cedula.trim().toUpperCase(),
+          cedula: cedulaUpper,
           nombres: nombres.trim(),
           apellidos: apellidos.trim(),
           celular: cleanCelular || null,
@@ -255,12 +328,11 @@ export const VendedoresPage: React.FC = () => {
           zonaId,
           porcentajeComision: comisionNum
         });
-        setSuccessMessage('Datos del vendedor actualizados exitosamente.');
+        toast.success('Datos del vendedor actualizados exitosamente.');
       }
 
       setIsFormModalOpen(false);
       await loadData();
-      setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
       if (err.response?.data?.detail) {
         setFormError(err.response.data.detail);
@@ -283,15 +355,14 @@ export const VendedoresPage: React.FC = () => {
 
     try {
       setIsSubmitting(true);
-      await api.patch(`/vendedores/${resetTarget.id}/reset-password`, {
-        nuevaPassword: newPassword
+      await api.post(`/vendedores/${resetTarget.id}/reset-password`, {
+        newPassword
       });
-      setSuccessMessage(`Contraseña de ${resetTarget.username} restablecida con éxito.`);
+      toast.success(`Contraseña actualizada para ${resetTarget.username}.`);
       setIsResetModalOpen(false);
-      setTimeout(() => setSuccessMessage(null), 4000);
+      setNewPassword('');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al restablecer contraseña.');
-      setTimeout(() => setError(null), 4000);
+      toast.error(err.response?.data?.detail || 'Error al restablecer contraseña.');
     } finally {
       setIsSubmitting(false);
     }
@@ -299,43 +370,44 @@ export const VendedoresPage: React.FC = () => {
 
   const handleToggleEstado = async (v: Vendedor) => {
     try {
-      const nuevoEstado = !v.estado;
-      await api.patch(`/vendedores/${v.id}/estado`, {
-        estado: nuevoEstado
-      });
-
-      setVendedores(prev => prev.map(item => item.id === v.id ? { ...item, estado: nuevoEstado } : item));
-      setSuccessMessage(`Vendedor ${v.nombres} ${nuevoEstado ? 'activado' : 'desactivado'}.`);
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch {
-      setError('Error al cambiar estado.');
-      setTimeout(() => setError(null), 4000);
+      await api.patch(`/vendedores/${v.id}/toggle-estado`);
+      toast.success(`Estado actualizado para ${v.nombres}.`);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Error al cambiar estado.');
     }
   };
 
-  const vendedoresActivos = vendedores.filter(v => v.estado).length;
+  const zonaOptions = [
+    { value: 'all', label: 'Todas las Zonas' },
+    ...zonas.map(z => ({
+      value: z.id.toString(),
+      label: z.nombre,
+      sublabel: `x${Number(z.coeficientePremio).toFixed(2)}`
+    }))
+  ];
+
+  const modalZonaOptions = zonas.map(z => ({
+    value: z.id,
+    label: z.nombre,
+    sublabel: `Multiplicador x${Number(z.coeficientePremio).toFixed(2)}`
+  }));
+
   const currentSelectedZona = zonas.find(z => z.id === zonaId);
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs uppercase tracking-wider mb-1">
-            <Users className="w-4 h-4" />
-            Gestión de Personal y Puntos de Venta
-          </div>
-          <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white">Gestión de Vendedores</h2>
-          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            Venta libre sin saldo obligatorio. Administra porcentaje de comisión (%) y limitadores por número para controlar el riesgo.
-          </p>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Gestión de Vendedores</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Control de cuentas de acceso, comisiones por venta y topes de riesgo personalizados</p>
         </div>
-
         <button
           onClick={openCreateModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-all self-start sm:self-auto shrink-0"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
         >
-          <Plus className="w-4 h-4" />
+          <UserPlus className="w-4 h-4" />
           Nuevo Vendedor
         </button>
       </div>
@@ -343,18 +415,20 @@ export const VendedoresPage: React.FC = () => {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Vendedores Activos</span>
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Vendedores Registrados</span>
           <div className="mt-2 flex items-baseline gap-2">
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white">{vendedoresActivos}</h3>
-            <span className="text-xs text-slate-500 dark:text-slate-400">de {vendedores.length} registrados</span>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white">{vendedores.length}</h3>
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+              {vendedores.filter(v => v.estado).length} activos
+            </span>
           </div>
         </div>
 
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Modelo Operativo</span>
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Comisión Promedio</span>
           <div className="mt-2 flex items-baseline gap-2">
-            <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400">Venta Abierta</h3>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Sin prepago</span>
+            <h3 className="text-2xl font-black text-indigo-600 dark:text-indigo-400">10.0%</h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400">Sobre venta bruta</span>
           </div>
         </div>
 
@@ -362,26 +436,12 @@ export const VendedoresPage: React.FC = () => {
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Sucursales Activas</span>
           <div className="mt-2 flex items-baseline gap-2">
             <h3 className="text-2xl font-black text-indigo-600 dark:text-indigo-400">{zonas.length}</h3>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Zonas configuradas</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">Zonas operativas</span>
           </div>
         </div>
       </div>
 
-      {/* Toast Notifications */}
-      {successMessage && (
-        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          {successMessage}
-        </div>
-      )}
-      {error && (
-        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-xs font-semibold flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          {error}
-        </div>
-      )}
-
-      {/* Filters Bar con Select estilizado */}
+      {/* Filters Bar con CustomSelect estilizado */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -390,21 +450,17 @@ export const VendedoresPage: React.FC = () => {
             placeholder="Buscar por cédula, nombre o usuario..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition-all font-medium"
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition-all font-medium"
           />
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <select
+        <div className="w-full sm:w-60">
+          <CustomSelect
+            options={zonaOptions}
             value={filterZona}
-            onChange={(e) => setFilterZona(e.target.value)}
-            className="w-full sm:w-56 px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
-          >
-            <option value="all">Todas las Zonas</option>
-            {zonas.map(z => (
-              <option key={z.id} value={z.id.toString()}>{z.nombre}</option>
-            ))}
-          </select>
+            onChange={(val) => setFilterZona(val)}
+            placeholder="Filtrar por Zona"
+          />
         </div>
       </div>
 
@@ -419,7 +475,7 @@ export const VendedoresPage: React.FC = () => {
           <div className="flex flex-col items-center justify-center p-12 text-center">
             <Users className="w-10 h-10 text-slate-400 mb-3" />
             <h4 className="text-sm font-bold text-slate-900 dark:text-white">No se encontraron vendedores</h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Registra un nuevo operador de calle para habilitar ventas.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Registra un nuevo vendedor para habilitar sus ventas en ruta.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -452,72 +508,59 @@ export const VendedoresPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="font-semibold text-indigo-600 dark:text-indigo-400">{v.username}</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{v.cedula}</div>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">@{v.username}</span>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono uppercase">{v.cedula}</p>
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="font-semibold text-slate-900 dark:text-white">{v.zonaNombre}</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">x{Number(v.coeficientePremio).toFixed(2)} Coef.</div>
+                      <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                        {v.zonaNombre || 'Zona General'}
+                      </span>
                     </td>
                     <td className="py-3.5 px-4">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-300 font-mono font-bold text-xs">
+                      <span className="inline-flex items-center gap-1 font-bold font-mono text-xs px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
                         <Percent className="w-3 h-3" />
-                        {v.porcentajeComision || 10}% sobre ventas
+                        {v.porcentajeComision || 10}%
                       </span>
                     </td>
                     <td className="py-3.5 px-4">
                       <button
                         onClick={() => openLimitModal(v)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold border border-slate-300 dark:border-slate-700 transition-colors"
-                        title="Configurar límites por número"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors border border-indigo-200 dark:border-indigo-500/30 cursor-pointer"
                       >
-                        <Sliders className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                        <span>Configurar Límites</span>
+                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                        <span>Configurar ({v.limitadores?.length || 3})</span>
                       </button>
                     </td>
                     <td className="py-3.5 px-4">
                       <button
                         onClick={() => handleToggleEstado(v)}
-                        title="Haz clic para alternar estado"
-                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold border transition-all ${
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors cursor-pointer ${
                           v.estado
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400 hover:bg-emerald-100'
-                            : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400 hover:bg-red-100'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30 hover:bg-emerald-100'
+                            : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/30 hover:bg-rose-100'
                         }`}
                       >
-                        {v.estado ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Activo
-                          </>
-                        ) : (
-                          <>
-                            <XCircle className="w-3.5 h-3.5" />
-                            Inactivo
-                          </>
-                        )}
+                        {v.estado ? 'ACTIVO' : 'INACTIVO'}
                       </button>
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          onClick={() => {
-                            setResetTarget(v);
-                            setNewPassword('');
-                            setFormError(null);
-                            setIsResetModalOpen(true);
-                          }}
-                          className="p-1.5 text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          title="Restablecer Contraseña"
-                        >
-                          <KeyRound className="w-4 h-4" />
-                        </button>
-                        <button
                           onClick={() => openEditModal(v)}
-                          className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          title="Editar Perfil"
+                          title="Editar Vendedor"
+                          className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg transition-colors cursor-pointer"
                         >
                           <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setResetTarget(v);
+                            setIsResetModalOpen(true);
+                          }}
+                          title="Restablecer Contraseña"
+                          className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <KeyRound className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -529,26 +572,25 @@ export const VendedoresPage: React.FC = () => {
         )}
       </div>
 
-      {/* Modal: Crear / Editar Vendedor */}
+      {/* Modal: Crear / Editar Vendedor con CustomSelect y Cédula Uppercase */}
       {isFormModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                {formMode === 'create' ? 'Registrar Nuevo Vendedor' : 'Editar Perfil de Vendedor'}
+                {formMode === 'create' ? 'Nuevo Vendedor' : 'Editar Perfil de Vendedor'}
               </h3>
               <button
                 onClick={() => setIsFormModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {formError && (
-              <div className="mt-4 p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{formError}</span>
+              <div className="mt-3 p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-700 dark:text-rose-400 text-xs font-semibold">
+                {formError}
               </div>
             )}
 
@@ -560,13 +602,14 @@ export const VendedoresPage: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    placeholder="001-120595-0002B"
-                    value={cedula}
-                    onChange={(e) => setCedula(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:border-indigo-500 font-medium"
+                    placeholder="001-000000-0000A"
+                    value={cedula.toUpperCase()}
+                    onChange={(e) => setCedula(e.target.value.toUpperCase())}
+                    style={{ textTransform: 'uppercase' }}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono uppercase font-bold"
                     required
                   />
-                  <span className="text-[10px] text-slate-400">Formato: 001-000000-0000A</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Formato: 001-000000-0000A</span>
                 </div>
 
                 <div>
@@ -574,14 +617,13 @@ export const VendedoresPage: React.FC = () => {
                     Teléfono (8 dígitos)
                   </label>
                   <input
-                    type="text"
-                    maxLength={9}
+                    type="tel"
                     placeholder="8888-8888"
                     value={celular}
                     onChange={(e) => setCelular(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:border-indigo-500 font-medium"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono font-medium"
                   />
-                  <span className="text-[10px] text-slate-400">Sin +505 (Nicaragua)</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">8 dígitos sin prefijo internacional</span>
                 </div>
               </div>
 
@@ -592,7 +634,6 @@ export const VendedoresPage: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    placeholder="ej. Juan"
                     value={nombres}
                     onChange={(e) => setNombres(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
@@ -606,7 +647,6 @@ export const VendedoresPage: React.FC = () => {
                   </label>
                   <input
                     type="text"
-                    placeholder="ej. Pérez Vendedor"
                     value={apellidos}
                     onChange={(e) => setApellidos(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
@@ -619,14 +659,14 @@ export const VendedoresPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                      Nombre de Usuario (Login)
+                      Nombre de Usuario
                     </label>
                     <input
                       type="text"
-                      placeholder="ej. vendedor1"
+                      placeholder="ej. juanperez"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono font-medium"
                       required
                     />
                   </div>
@@ -647,23 +687,19 @@ export const VendedoresPage: React.FC = () => {
                 </div>
               )}
 
+              {/* Selector de Sucursal con CustomSelect para evitar el gris nativo */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Sucursal / Zona Comercial (Hereda Coeficiente)
+                  Sucursal / Zona Comercial
                 </label>
-                <select
+                <CustomSelect
+                  options={modalZonaOptions}
                   value={zonaId}
-                  onChange={(e) => setZonaId(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
-                >
-                  {zonas.map(z => (
-                    <option key={z.id} value={z.id}>
-                      {z.nombre} (Multiplicador x{Number(z.coeficientePremio).toFixed(2)})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setZonaId(Number(val))}
+                  placeholder="Seleccionar Zona Comercial"
+                />
                 {currentSelectedZona && (
-                  <p className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400">
+                  <p className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">
                     Multiplicador activo de esta zona: x{Number(currentSelectedZona.coeficientePremio).toFixed(2)}
                   </p>
                 )}
@@ -702,18 +738,17 @@ export const VendedoresPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsFormModalOpen(false)}
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {formMode === 'create' ? 'Crear Vendedor' : 'Guardar Cambios'}
+                  Guardar Cambios
                 </button>
               </div>
             </form>
@@ -721,122 +756,225 @@ export const VendedoresPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal: Configuración de Limitadores por Número */}
+      {/* Modal: Limitadores por Número (Soporta Rango y Lote) */}
       {isLimitModalOpen && limitTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative space-y-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
                   Límites de Venta por Número
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Vendedor: {limitTarget.nombres} {limitTarget.apellidos}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Vendedor: <strong className="text-indigo-600 dark:text-indigo-400">{limitTarget.nombres} {limitTarget.apellidos}</strong>
+                </p>
               </div>
               <button
                 onClick={() => setIsLimitModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Define topes de venta personalizados para este vendedor. Puedes limitar todos los números o números específicos con montos distintos (ej. 00 a $50, 10 a $80, 92 a $100).
-            </p>
+            {/* Selector de Modo: Por Rango o Individual */}
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setTipoConfiguracion('rango')}
+                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  tipoConfiguracion === 'rango'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                Por Rango de Números (Lote)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipoConfiguracion('individual')}
+                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  tipoConfiguracion === 'individual'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                Número Específico
+              </button>
+            </div>
 
-            {/* Formulario para agregar limitador */}
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
-              <span className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider block">
-                Agregar o Calibrar Límite
-              </span>
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={aplicaATodos}
-                    onChange={(e) => setAplicaATodos(e.target.checked)}
-                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span>Aplicar a TODOS los números</span>
-                </label>
+            {/* MODO RANGO */}
+            {tipoConfiguracion === 'rango' && (
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                  Aplicar Límite a un Rango (ej. 00 al 29 con $50)
+                </span>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Desde (00-99)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="99"
+                      value={rangoDesde}
+                      onChange={(e) => setRangoDesde(e.target.value)}
+                      placeholder="00"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Hasta (00-99)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="99"
+                      value={rangoHasta}
+                      onChange={(e) => setRangoHasta(e.target.value)}
+                      placeholder="29"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Tope Máximo ($)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={rangoMonto}
+                      onChange={(e) => setRangoMonto(e.target.value)}
+                      placeholder="50"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAplicarRango}
+                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    + Aplicar Límite a Rango ({rangoDesde.padStart(2, '0')} - {rangoHasta.padStart(2, '0')})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAplicarATodos(parseFloat(rangoMonto) || 50)}
+                    title="Aplicar este tope a los 100 números (00 a 99)"
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Todos (00-99)
+                  </button>
+                </div>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 gap-2">
-                {!aplicaATodos && (
+            {/* MODO INDIVIDUAL */}
+            {tipoConfiguracion === 'individual' && (
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                  Calibrar Número Específico
+                </span>
+
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
                       Número (00-99)
                     </label>
                     <input
-                      type="text"
-                      maxLength={2}
+                      type="number"
+                      min="0"
+                      max="99"
                       value={nuevoNumeroLimite}
-                      onChange={(e) => setNuevoNumeroLimite(e.target.value.replace(/\D/g, ''))}
+                      onChange={(e) => setNuevoNumeroLimite(e.target.value)}
                       placeholder="00"
                       className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
                     />
                   </div>
-                )}
-                <div className={aplicaATodos ? 'col-span-2' : ''}>
-                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                    Monto Límite ($)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={nuevoMontoLimite}
-                    onChange={(e) => setNuevoMontoLimite(e.target.value)}
-                    placeholder="50"
-                    className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
-                  />
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Monto Límite ($)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={nuevoMontoLimite}
+                      onChange={(e) => setNuevoMontoLimite(e.target.value)}
+                      placeholder="50"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <button
-                type="button"
-                onClick={handleAgregarLimite}
-                className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-colors"
-              >
-                + Establecer Límite
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={handleAgregarLimiteIndividual}
+                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                >
+                  + Establecer Límite
+                </button>
+              </div>
+            )}
 
             {/* Lista de Limitadores Activos */}
-            <div className="space-y-1.5 max-h-44 overflow-y-auto">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                Límites Configurados ({limitadoresLocales.length})
-              </span>
-              {limitadoresLocales.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">Sin limitadores específicos (Venta abierta sin restricciones).</p>
-              ) : (
-                limitadoresLocales.map((lim, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
-                        {lim.numero === 'TODOS' ? 'TODOS' : `#${lim.numero}`}
-                      </span>
-                      <span className="text-xs text-slate-700 dark:text-slate-300">
-                        Tope Máx: <strong className="font-mono text-emerald-600 dark:text-emerald-400">${lim.limiteMonto.toFixed(2)}</strong>
-                      </span>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Límites Configurados ({limitadoresLocales.length})
+                </span>
+                {limitadoresLocales.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleLimpiarTodosLimites}
+                    className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                  >
+                    Limpiar Todos
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                {limitadoresLocales.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic p-3 text-center bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
+                    Sin limitadores configurados (Venta abierta sin restricciones).
+                  </p>
+                ) : (
+                  limitadoresLocales.map((lim, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
+                          #{lim.numero}
+                        </span>
+                        <span className="text-xs text-slate-700 dark:text-slate-300">
+                          Tope Máx: <strong className="font-mono text-emerald-600 dark:text-emerald-400">${lim.limiteMonto.toFixed(2)}</strong>
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleEliminarLimite(lim.numero)}
+                        className="p-1 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                        title="Eliminar límite"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleEliminarLimite(lim.numero)}
-                      className="p-1 text-slate-400 hover:text-red-500 transition-colors"
-                      title="Eliminar límite"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
 
             <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setIsLimitModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
               >
                 Cerrar
               </button>
@@ -844,7 +982,7 @@ export const VendedoresPage: React.FC = () => {
                 type="button"
                 onClick={handleGuardarLimites}
                 disabled={isSubmitting}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Guardar Limitadores
@@ -864,24 +1002,17 @@ export const VendedoresPage: React.FC = () => {
               </h3>
               <button
                 onClick={() => setIsResetModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {formError && (
-              <div className="mt-4 p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Ingresa la nueva clave para el usuario <strong className="text-indigo-600 dark:text-indigo-400 font-mono">@{resetTarget.username}</strong>
+            </p>
 
             <form onSubmit={handleResetPassword} className="mt-4 space-y-4">
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                Ingresa una nueva contraseña para el vendedor <strong>{resetTarget.username}</strong> ({resetTarget.nombres}).
-              </p>
-
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                   Nueva Contraseña
@@ -891,27 +1022,26 @@ export const VendedoresPage: React.FC = () => {
                   placeholder="Mínimo 6 caracteres"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
+                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
                   required
                 />
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800">
+              <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsResetModalOpen(false)}
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Cambiar Contraseña
+                  Actualizar Clave
                 </button>
               </div>
             </form>

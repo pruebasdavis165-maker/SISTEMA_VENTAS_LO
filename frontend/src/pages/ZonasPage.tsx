@@ -15,14 +15,15 @@ import {
 import { api } from '../services/api';
 import { Zona } from '../types/zonas';
 
+import { useToastStore } from '../store/useToastStore';
+
 export const ZonasPage: React.FC = () => {
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [filteredZonas, setFilteredZonas] = useState<Zona[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState<'all' | 'active' | 'inactive'>('all');
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const toast = useToastStore();
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,12 +38,11 @@ export const ZonasPage: React.FC = () => {
   const fetchZonas = async () => {
     try {
       setIsLoading(true);
-      setError(null);
       const res = await api.get<Zona[]>('/zonas');
       setZonas(res.data);
       setFilteredZonas(res.data);
     } catch {
-      setError('Error al cargar la lista de zonas comerciales.');
+      toast.error('Error al cargar la lista de zonas comerciales.');
     } finally {
       setIsLoading(false);
     }
@@ -110,19 +110,20 @@ export const ZonasPage: React.FC = () => {
           nombre: nombre.trim(),
           coeficientePremio: coef
         });
-        setSuccessMessage('Zona comercial creada con éxito.');
+        toast.success('Zona comercial creada con éxito.');
       } else if (selectedZonaId) {
         await api.put(`/zonas/${selectedZonaId}`, {
           nombre: nombre.trim(),
           coeficientePremio: coef,
           estado: estado
         });
-        setSuccessMessage('Zona comercial actualizada correctamente.');
+        toast.success('Zona comercial actualizada correctamente.');
+      } else {
+        toast.success('Zona comercial registrada correctamente.');
       }
 
       setIsModalOpen(false);
       await fetchZonas();
-      setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
       if (err.response?.data?.detail) {
         setFormError(err.response.data.detail);
@@ -142,51 +143,31 @@ export const ZonasPage: React.FC = () => {
       });
 
       setZonas(prev => prev.map(z => z.id === zona.id ? { ...z, estado: nuevoEstado } : z));
-      setSuccessMessage(`Zona "${zona.nombre}" ${nuevoEstado ? 'activada' : 'desactivada'} correctamente.`);
-      setTimeout(() => setSuccessMessage(null), 3000);
+      toast.success(`Zona "${zona.nombre}" ${nuevoEstado ? 'activada' : 'desactivada'} correctamente.`);
     } catch {
-      setError('No se pudo cambiar el estado de la zona.');
-      setTimeout(() => setError(null), 4000);
+      toast.error('No se pudo cambiar el estado de la zona.');
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
-          <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs uppercase tracking-wider mb-1">
-            <MapPin className="w-4 h-4" />
-            Parámetros de Zonas Comerciales
-          </div>
-          <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white">Gestión de Zonas y Coeficientes</h2>
-          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            Define el multiplicador de premios por sucursal (máximo 99). Los vendedores heredan automáticamente este parámetro al emitir boletos.
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Gestión de Zonas y Coeficientes</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Configuración de multiplicador de premios por sucursal (máximo 99) para cálculo en tiempo real
           </p>
         </div>
 
         <button
           onClick={openCreateModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-all self-start sm:self-auto shrink-0"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-all self-start sm:self-auto shrink-0 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           Nueva Zona
         </button>
       </div>
-
-      {/* Toast Notifications */}
-      {successMessage && (
-        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          {successMessage}
-        </div>
-      )}
-      {error && (
-        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-xs font-semibold flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          {error}
-        </div>
-      )}
 
       {/* Filters Bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">

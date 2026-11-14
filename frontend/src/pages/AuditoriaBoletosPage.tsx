@@ -15,13 +15,14 @@ import {
   Ticket
 } from 'lucide-react';
 
+import { useToastStore } from '../store/useToastStore';
+
 export const AuditoriaBoletosPage: React.FC = () => {
   const [boletos, setBoletos] = useState<BoletoAuditoria[]>([]);
   const [sorteos, setSorteos] = useState<Sorteo[]>([]);
   const [zonas, setZonas] = useState<Zona[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [mensajeExito, setMensajeExito] = useState<string | null>(null);
+  const toast = useToastStore();
 
   // Filtros
   const [filtroBoleto, setFiltroBoleto] = useState('');
@@ -53,7 +54,6 @@ export const AuditoriaBoletosPage: React.FC = () => {
 
   const ejecutarBusqueda = async () => {
     setIsLoading(true);
-    setError(null);
     try {
       const params: Record<string, any> = {};
       if (filtroBoleto.trim()) params.numeroBoleto = filtroBoleto.trim();
@@ -64,7 +64,7 @@ export const AuditoriaBoletosPage: React.FC = () => {
       const res = await api.get<BoletoAuditoria[]>('/boletos/auditoria', { params });
       setBoletos(res.data);
     } catch {
-      setError('Error al consultar boletos en auditoría.');
+      toast.error('Error al consultar boletos en auditoría.');
     } finally {
       setIsLoading(false);
     }
@@ -72,10 +72,9 @@ export const AuditoriaBoletosPage: React.FC = () => {
 
   const handleReimprimir = async (boletoId: number) => {
     setReimprimiendo(true);
-    setError(null);
     try {
       const res = await api.post<ReimprimirBoletoResponse>(`/boletos/${boletoId}/reimprimir`);
-      setMensajeExito(`Boleto reimpreso exitosamente con marca reglamentaria: "${res.data.marcaAguaCopia}"`);
+      toast.success(`Boleto reimpreso exitosamente con marca reglamentaria: "${res.data.marcaAguaCopia}"`);
       
       if (boletoDetalle && boletoDetalle.id === boletoId) {
         setBoletoDetalle({
@@ -86,7 +85,7 @@ export const AuditoriaBoletosPage: React.FC = () => {
 
       await ejecutarBusqueda();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'No se pudo reimprimir el boleto.');
+      toast.error(err.response?.data?.detail || 'No se pudo reimprimir el boleto.');
     } finally {
       setReimprimiendo(false);
     }
@@ -121,7 +120,7 @@ export const AuditoriaBoletosPage: React.FC = () => {
 
         <button
           onClick={ejecutarBusqueda}
-          className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-300 dark:border-slate-700 transition-colors text-xs font-semibold shrink-0"
+          className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-300 dark:border-slate-700 transition-colors text-xs font-semibold shrink-0 cursor-pointer"
           disabled={isLoading}
         >
           <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -129,22 +128,7 @@ export const AuditoriaBoletosPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Alertas */}
-      {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-xs font-semibold flex items-center justify-between">
-          <span>{error}</span>
-          <button onClick={() => setError(null)}><X className="w-4 h-4" /></button>
-        </div>
-      )}
-
-      {mensajeExito && (
-        <div className="p-4 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-semibold flex items-center justify-between">
-          <span>{mensajeExito}</span>
-          <button onClick={() => setMensajeExito(null)}><X className="w-4 h-4" /></button>
-        </div>
-      )}
-
-      {/* Barra de Búsqueda y Filtros con selects estilizados */}
+      {/* Barra de Búsqueda y Filtros */}
       <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
