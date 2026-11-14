@@ -10,6 +10,24 @@ public record HorarioConfiguracionDto(
     bool Activo
 );
 
+public record CrearHorarioConfigRequest(
+    string Nombre,
+    TimeSpan HoraCierre,
+    string? DiasSemana = "L,M,X,J,V,S,D",
+    int MinutosBloqueoPrevio = 5,
+    int MinutosReaperturaPosterior = 10,
+    bool Activo = true
+);
+
+public record ActualizarHorarioConfigRequest(
+    string Nombre,
+    TimeSpan HoraCierre,
+    string? DiasSemana = "L,M,X,J,V,S,D",
+    int MinutosBloqueoPrevio = 5,
+    int MinutosReaperturaPosterior = 10,
+    bool Activo = true
+);
+
 public record SorteoDto(
     long Id,
     string Codigo,

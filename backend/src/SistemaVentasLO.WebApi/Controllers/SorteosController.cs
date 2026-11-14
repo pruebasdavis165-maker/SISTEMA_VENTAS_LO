@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SistemaVentasLO.Application.Common.Interfaces;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.BloquearNumero;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.CambiarEstadoSorteo;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.CrearSorteo;
@@ -48,6 +49,132 @@ public class SorteosController : ApiControllerBase
     {
         var result = await Mediator.Send(new ObtenerHorariosQuery());
         return Ok(result);
+    }
+
+    [HttpPost("horarios")]
+    [Authorize(Roles = "ADMIN")]
+    [ProducesResponseType(typeof(HorarioConfiguracionDto), StatusCodes.Status201Created)]
+    public async Task<IActionResult> CrearHorario(
+        [FromBody] CrearHorarioConfigRequest request,
+        [FromServices] IApplicationDbContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.Nombre))
+            return BadRequest(new { detail = "El nombre del horario no puede estar vacío." });
+
+        var nuevo = new SistemaVentasLO.Domain.Entities.HorarioConfiguracion
+        {
+            Nombre = request.Nombre.Trim(),
+            HoraCierre = request.HoraCierre,
+            DiasSemana = string.IsNullOrWhiteSpace(request.DiasSemana) ? "L,M,X,J,V,S,D" : request.DiasSemana.Trim(),
+            MinutosBloqueoPrevio = request.MinutosBloqueoPrevio > 0 ? request.MinutosBloqueoPrevio : 5,
+            MinutosReaperturaPosterior = request.MinutosReaperturaPosterior > 0 ? request.MinutosReaperturaPosterior : 10,
+            Activo = request.Activo,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.HorariosConfiguracion.Add(nuevo);
+        await context.SaveChangesAsync(default);
+
+        var dto = new HorarioConfiguracionDto(
+            nuevo.Id,
+            nuevo.Nombre,
+            nuevo.HoraCierre,
+            nuevo.DiasSemana,
+            nuevo.MinutosBloqueoPrevio,
+            nuevo.MinutosReaperturaPosterior,
+            nuevo.Activo
+        );
+
+        return StatusCode(StatusCodes.Status201Created, dto);
+    }
+
+    [HttpPut("horarios/{id:int}")]
+    [Authorize(Roles = "ADMIN")]
+    [ProducesResponseType(typeof(HorarioConfiguracionDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ActualizarHorario(
+        int id,
+        [FromBody] ActualizarHorarioConfigRequest request,
+        [FromServices] IApplicationDbContext context)
+    {
+        var h = await context.HorariosConfiguracion.FirstOrDefaultAsync(x => x.Id == id);
+        if (h == null)
+            return NotFound(new { detail = "Horario no encontrado." });
+
+        if (!string.IsNullOrWhiteSpace(request.Nombre))
+            h.Nombre = request.Nombre.Trim();
+
+        h.HoraCierre = request.HoraCierre;
+        if (!string.IsNullOrWhiteSpace(request.DiasSemana))
+            h.DiasSemana = request.DiasSemana.Trim();
+
+        h.MinutosBloqueoPrevio = request.MinutosBloqueoPrevio > 0 ? request.MinutosBloqueoPrevio : 5;
+        h.MinutosReaperturaPosterior = request.MinutosReaperturaPosterior > 0 ? request.MinutosReaperturaPosterior : 10;
+        h.Activo = request.Activo;
+
+        await context.SaveChangesAsync(default);
+
+        var dto = new HorarioConfiguracionDto(
+            h.Id,
+            h.Nombre,
+            h.HoraCierre,
+            h.DiasSemana,
+            h.MinutosBloqueoPrevio,
+            h.MinutosReaperturaPosterior,
+            h.Activo
+        );
+
+        return Ok(dto);
+    }
+
+    [HttpPatch("horarios/{id:int}/toggle")]
+    [Authorize(Roles = "ADMIN")]
+    [ProducesResponseType(typeof(HorarioConfiguracionDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ToggleHorario(
+        int id,
+        [FromServices] IApplicationDbContext context)
+    {
+        var h = await context.HorariosConfiguracion.FirstOrDefaultAsync(x => x.Id == id);
+        if (h == null)
+            return NotFound(new { detail = "Horario no encontrado." });
+
+        h.Activo = !h.Activo;
+        await context.SaveChangesAsync(default);
+
+        var dto = new HorarioConfiguracionDto(
+            h.Id,
+            h.Nombre,
+            h.HoraCierre,
+            h.DiasSemana,
+            h.MinutosBloqueoPrevio,
+            h.MinutosReaperturaPosterior,
+            h.Activo
+        );
+
+        return Ok(dto);
+    }
+
+    [HttpDelete("horarios/{id:int}")]
+    [Authorize(Roles = "ADMIN")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> EliminarHorario(
+        int id,
+        [FromServices] IApplicationDbContext context)
+    {
+        var h = await context.HorariosConfiguracion.FirstOrDefaultAsync(x => x.Id == id);
+        if (h == null)
+            return NotFound(new { detail = "Horario no encontrado." });
+
+        var tieneSorteos = await context.Sorteos.AnyAsync(s => s.HorarioConfiguracionId == id);
+        if (tieneSorteos)
+        {
+            h.Activo = false;
+            await context.SaveChangesAsync(default);
+            return Ok(new { Mensaje = "Horario desactivado para no afectar sorteos anteriores." });
+        }
+
+        context.HorariosConfiguracion.Remove(h);
+        await context.SaveChangesAsync(default);
+        return Ok(new { Mensaje = "Horario eliminado exitosamente." });
     }
 
     [HttpPost]
@@ -125,10 +252,51 @@ public class SorteosController : ApiControllerBase
     [Authorize(Roles = "ADMIN")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> DesbloquearNumero(long id, string numero, [FromQuery] string? alcance)
+    public async Task<IActionResult> DesbloquearNumero(
+        long id, 
+        string numero, 
+        [FromQuery] string? alcance,
+        [FromQuery] Guid? vendedorId,
+        [FromQuery] int? zonaId)
     {
-        await Mediator.Send(new DesbloquearNumeroCommand(id, numero, alcance));
+        await Mediator.Send(new DesbloquearNumeroCommand(id, numero, alcance, vendedorId, zonaId));
         return Ok(new { Mensaje = $"Número {numero} desbloqueado exitosamente." });
+    }
+
+    [HttpDelete("{id:long}")]
+    [Authorize(Roles = "ADMIN")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> EliminarSorteo(
+        long id,
+        [FromServices] IApplicationDbContext context)
+    {
+        var sorteo = await context.Sorteos
+            .Include(s => s.Boletos)
+            .FirstOrDefaultAsync(s => s.Id == id);
+
+        if (sorteo == null)
+            return NotFound(new { detail = "Sorteo no encontrado." });
+
+        if (sorteo.Estado == "LIQUIDADO")
+            return BadRequest(new { detail = "No se puede eliminar un sorteo ya liquidado y oficializado." });
+
+        if (sorteo.Boletos.Any(b => b.Estado == "ACTIVO"))
+        {
+            sorteo.Estado = "CANCELADO";
+            sorteo.UpdatedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync(default);
+            return Ok(new { Mensaje = "El sorteo tenía ventas registradas y ha sido CANCELADO para mantener trazabilidad." });
+        }
+
+        var bloqueos = await context.BloqueosNumeros.Where(b => b.SorteoId == id).ToListAsync();
+        if (bloqueos.Any())
+        {
+            context.BloqueosNumeros.RemoveRange(bloqueos);
+        }
+
+        context.Sorteos.Remove(sorteo);
+        await context.SaveChangesAsync(default);
+        return Ok(new { Mensaje = "Sorteo eliminado exitosamente." });
     }
 
     [HttpPost("{id:long}/liquidar")]
