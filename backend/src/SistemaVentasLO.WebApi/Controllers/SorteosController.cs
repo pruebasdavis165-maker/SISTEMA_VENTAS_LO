@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.BloquearNumero;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.CambiarEstadoSorteo;
 using SistemaVentasLO.Application.Features.Sorteos.Commands.CrearSorteo;
@@ -152,6 +153,181 @@ public class SorteosController : ApiControllerBase
     public async Task<IActionResult> GetLiquidacion(long id)
     {
         var result = await Mediator.Send(new ObtenerLiquidacionSorteoQuery(id));
+        return Ok(result);
+    }
+
+    [HttpGet("{id:long}/detalle")]
+    [Authorize]
+    [ProducesResponseType(typeof(SorteoDetalleDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetDetalle(long id, [FromServices] SistemaVentasLO.Application.Common.Interfaces.IApplicationDbContext context)
+    {
+        var sorteo = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+            context.Sorteos
+                .Include(s => s.HorarioConfiguracion)
+                .Include(s => s.Zona),
+            s => s.Id == id
+        );
+
+        if (sorteo == null) return NotFound("Sorteo no encontrado");
+
+        var boletos = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+            context.Boletos
+                .Include(b => b.Vendedor)
+                .Include(b => b.Zona)
+                .Include(b => b.Jugadas)
+                .Where(b => b.SorteoId == id && b.Estado == "ACTIVO")
+        );
+
+        decimal totalVentas = boletos.Sum(b => b.TotalApostado);
+        decimal totalPremios = 0;
+        decimal totalComisiones = 0;
+
+        var desgloseVendedores = new List<DesgloseVendedorSorteoDto>();
+
+        var boletosPorVendedor = boletos.GroupBy(b => b.VendedorId);
+        foreach (var grupo in boletosPorVendedor)
+        {
+            var primerBoleto = grupo.First();
+            var vendedor = primerBoleto.Vendedor;
+            var zonaNombre = primerBoleto.Zona?.Nombre ?? "Sucursal General";
+            var ventasVendedor = grupo.Sum(b => b.TotalApostado);
+            var comision = Math.Round(ventasVendedor * 0.10m, 2);
+            totalComisiones += comision;
+
+            decimal premiosVendedor = 0;
+            if (!string.IsNullOrWhiteSpace(sorteo.NumeroGanador))
+            {
+                premiosVendedor = grupo.SelectMany(b => b.Jugadas)
+                    .Where(j => j.Numero == sorteo.NumeroGanador)
+                    .Sum(j => j.PremioCalculado);
+            }
+            totalPremios += premiosVendedor;
+
+            var nombreCompleto = vendedor != null ? $"{vendedor.Nombres} {vendedor.Apellidos}".Trim() : "Vendedor Desconocido";
+
+            desgloseVendedores.Add(new DesgloseVendedorSorteoDto(
+                grupo.Key,
+                string.IsNullOrWhiteSpace(nombreCompleto) ? (vendedor?.Username ?? "Vendedor") : nombreCompleto,
+                vendedor?.Cedula ?? "--",
+                zonaNombre,
+                grupo.Count(),
+                ventasVendedor,
+                comision,
+                premiosVendedor
+            ));
+        }
+
+        var topNumeros = boletos.SelectMany(b => b.Jugadas)
+            .GroupBy(j => j.Numero)
+            .Select(g => new TopNumeroJugadoDto(
+                g.Key,
+                g.Sum(j => j.Monto),
+                g.Count()
+            ))
+            .OrderByDescending(x => x.TotalVendido)
+            .Take(10)
+            .ToList();
+
+        decimal utilidadNeta = totalVentas - totalPremios - totalComisiones;
+
+        var detalle = new SorteoDetalleDto(
+            sorteo.Id,
+            sorteo.Codigo,
+            sorteo.Fecha,
+            sorteo.HoraCierre,
+            sorteo.HorarioConfiguracion?.Nombre,
+            sorteo.Estado,
+            sorteo.NumeroGanador,
+            totalVentas,
+            totalPremios,
+            totalComisiones,
+            utilidadNeta,
+            boletos.Count,
+            desgloseVendedores.OrderByDescending(v => v.TotalVendido).ToList(),
+            topNumeros
+        );
+
+        return Ok(detalle);
+    }
+
+    [HttpGet("historial")]
+    [Authorize]
+    [ProducesResponseType(typeof(List<SorteoHistorialDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetHistorial(
+        [FromQuery] DateOnly? fechaDesde,
+        [FromQuery] DateOnly? fechaHasta,
+        [FromQuery] int? zonaId,
+        [FromServices] SistemaVentasLO.Application.Common.Interfaces.IApplicationDbContext context)
+    {
+        var query = context.Sorteos
+            .Include(s => s.HorarioConfiguracion)
+            .Include(s => s.Zona)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (fechaDesde.HasValue)
+            query = query.Where(s => s.Fecha >= fechaDesde.Value);
+
+        if (fechaHasta.HasValue)
+            query = query.Where(s => s.Fecha <= fechaHasta.Value);
+
+        if (zonaId.HasValue && zonaId.Value > 0)
+            query = query.Where(s => s.ZonaId == zonaId.Value || s.ZonaId == null);
+
+        var sorteos = await query
+            .OrderByDescending(s => s.Fecha)
+            .ThenByDescending(s => s.HoraCierre)
+            .Take(100)
+            .ToListAsync();
+
+        var sorteoIds = sorteos.Select(s => s.Id).ToList();
+
+        var boletos = await context.Boletos
+            .Include(b => b.Vendedor)
+            .Include(b => b.Jugadas)
+            .Where(b => sorteoIds.Contains(b.SorteoId) && b.Estado == "ACTIVO")
+            .AsNoTracking()
+            .ToListAsync();
+
+        var boletosPorSorteo = boletos.GroupBy(b => b.SorteoId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var result = new List<SorteoHistorialDto>();
+
+        foreach (var s in sorteos)
+        {
+            var sorteoBoletos = boletosPorSorteo.TryGetValue(s.Id, out var bList) ? bList : new List<SistemaVentasLO.Domain.Entities.Boleto>();
+
+            decimal ventaTotal = sorteoBoletos.Sum(b => b.TotalApostado);
+            decimal premios = 0;
+            if (!string.IsNullOrWhiteSpace(s.NumeroGanador))
+            {
+                premios = sorteoBoletos.SelectMany(b => b.Jugadas)
+                    .Where(j => j.Numero == s.NumeroGanador)
+                    .Sum(j => j.PremioCalculado);
+            }
+
+            decimal comisiones = Math.Round(ventaTotal * 0.10m, 2);
+            decimal utilidadNeta = ventaTotal - premios - comisiones;
+            int cantidadVendedores = sorteoBoletos.Select(b => b.VendedorId).Distinct().Count();
+
+            result.Add(new SorteoHistorialDto(
+                s.Id,
+                s.Codigo,
+                s.Fecha,
+                s.HoraCierre,
+                s.HorarioConfiguracion?.Nombre,
+                s.Estado,
+                s.NumeroGanador,
+                ventaTotal,
+                premios,
+                comisiones,
+                utilidadNeta,
+                sorteoBoletos.Count,
+                cantidadVendedores
+            ));
+        }
+
         return Ok(result);
     }
 }

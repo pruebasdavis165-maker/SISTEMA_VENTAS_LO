@@ -46,3 +46,53 @@ public record CambiarEstadoSorteoRequest(
 {
     public string ObtenerEstado() => !string.IsNullOrWhiteSpace(Estado) ? Estado : (!string.IsNullOrWhiteSpace(NuevoEstado) ? NuevoEstado : "ABIERTO");
 };
+
+public record DesgloseVendedorSorteoDto(
+    Guid VendedorId,
+    string NombreVendedor,
+    string Cedula,
+    string ZonaNombre,
+    int BoletosEmitidos,
+    decimal TotalVendido,
+    decimal ComisionGanada,
+    decimal PremiosAsociados
+);
+
+public record TopNumeroJugadoDto(
+    string Numero,
+    decimal TotalVendido,
+    int CantidadJugadas
+);
+
+public record SorteoDetalleDto(
+    long Id,
+    string Codigo,
+    DateOnly Fecha,
+    DateTime HoraCierre,
+    string? HorarioNombre,
+    string Estado,
+    string? NumeroGanador,
+    decimal VentaTotal,
+    decimal PremioTotal,
+    decimal ComisionesTotal,
+    decimal UtilidadNeta,
+    int TotalBoletos,
+    List<DesgloseVendedorSorteoDto> DesgloseVendedores,
+    List<TopNumeroJugadoDto> TopNumeros
+);
+
+public record SorteoHistorialDto(
+    long Id,
+    string Codigo,
+    DateOnly Fecha,
+    DateTime HoraCierre,
+    string? HorarioNombre,
+    string Estado,
+    string? NumeroGanador,
+    decimal VentaTotal,
+    decimal PremioTotal,
+    decimal ComisionesTotal,
+    decimal UtilidadNeta,
+    int TotalBoletos,
+    int CantidadVendedores
+);

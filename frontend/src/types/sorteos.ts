@@ -24,3 +24,53 @@ export interface Sorteo {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface DesgloseVendedorSorteo {
+  vendedorId: string;
+  nombreVendedor: string;
+  cedula: string;
+  zonaNombre: string;
+  boletosEmitidos: number;
+  totalVendido: number;
+  comisionGanada: number;
+  premiosAsociados: number;
+}
+
+export interface TopNumeroJugado {
+  numero: string;
+  totalVendido: number;
+  cantidadJugadas: number;
+}
+
+export interface SorteoDetalle {
+  id: number;
+  codigo: string;
+  fecha: string;
+  horaCierre: string;
+  horarioNombre: string | null;
+  estado: string;
+  numeroGanador: string | null;
+  ventaTotal: number;
+  premioTotal: number;
+  comisionesTotal: number;
+  utilidadNeta: number;
+  totalBoletos: number;
+  desgloseVendedores: DesgloseVendedorSorteo[];
+  topNumeros: TopNumeroJugado[];
+}
+
+export interface SorteoHistorial {
+  id: number;
+  codigo: string;
+  fecha: string;
+  horaCierre: string;
+  horarioNombre: string | null;
+  estado: string;
+  numeroGanador: string | null;
+  ventaTotal: number;
+  premioTotal: number;
+  comisionesTotal: number;
+  utilidadNeta: number;
+  totalBoletos: number;
+  cantidadVendedores: number;
+}
