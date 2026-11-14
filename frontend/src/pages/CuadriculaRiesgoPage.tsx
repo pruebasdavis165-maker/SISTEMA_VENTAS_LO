@@ -41,8 +41,10 @@ export const CuadriculaRiesgoPage: React.FC = () => {
   // Toast
   const toast = useToastStore();
 
-  // Modal para Bloquear / Desbloquear Número
+  // Modal para Bloquear / Límite de Venta por Número
   const [numeroModal, setNumeroModal] = useState<NumeroCuadricula | null>(null);
+  const [modalTipoTope, setModalTipoTope] = useState<'LIMITE' | 'TOTAL'>('LIMITE');
+  const [modalMontoLimite, setModalMontoLimite] = useState<number | string>(1600);
   const [modalAlcance, setModalAlcance] = useState<'GLOBAL' | 'POR_ZONA' | 'POR_VENDEDOR'>('GLOBAL');
   const [modalZonaId, setModalZonaId] = useState<string>('');
   const [modalVendedorId, setModalVendedorId] = useState<string>('');
@@ -121,26 +123,44 @@ export const CuadriculaRiesgoPage: React.FC = () => {
       setModalAlcance('POR_ZONA');
       setModalZonaId(zonaFiltro);
     } else {
-      setModalAlcance('GLOBAL');
+      setModalAlcance(celda.alcanceBloqueo as any || 'GLOBAL');
     }
+
+    if (celda.montoLimite !== undefined && celda.montoLimite !== null) {
+      if (celda.montoLimite === 0) {
+        setModalTipoTope('TOTAL');
+        setModalMontoLimite(0);
+      } else {
+        setModalTipoTope('LIMITE');
+        setModalMontoLimite(celda.montoLimite);
+      }
+    } else {
+      setModalTipoTope('LIMITE');
+      setModalMontoLimite(1600);
+    }
+
     setModalZonaId(zonaFiltro !== 'all' ? zonaFiltro : (zonas[0]?.id.toString() || ''));
     setModalVendedorId(vendedorFiltro !== 'all' ? vendedorFiltro : (vendedores[0]?.id || ''));
-    setModalMotivo(celda.motivoBloqueo || 'Tope de riesgo preventivo');
+    setModalMotivo(celda.motivoBloqueo || '');
   };
 
   const handleBloquearNumero = async () => {
     if (!sorteoSeleccionado || !numeroModal) return;
     setActionLoading(true);
     try {
+      const limiteNum = modalTipoTope === 'TOTAL' ? 0 : (Number(modalMontoLimite) || 0);
       await api.post(`/sorteos/${sorteoSeleccionado}/bloquear-numero`, {
         numero: numeroModal.numero,
         alcance: modalAlcance,
         zonaId: modalAlcance === 'POR_ZONA' && modalZonaId ? Number(modalZonaId) : undefined,
         vendedorId: modalAlcance === 'POR_VENDEDOR' && modalVendedorId ? modalVendedorId : undefined,
-        motivo: modalMotivo
+        montoLimite: limiteNum,
+        motivo: modalMotivo || (limiteNum > 0 ? `Tope de venta máximo: $${limiteNum}` : 'Bloqueo total')
       });
 
-      toast.success(`Número #${numeroModal.numero} bloqueado exitosamente.`);
+      toast.success(limiteNum > 0 
+        ? `Tope de $${limiteNum} aplicado al número #${numeroModal.numero}.` 
+        : `Número #${numeroModal.numero} bloqueado totalmente.`);
       setNumeroModal(null);
       await cargarCuadricula(
         sorteoSeleccionado,
@@ -148,7 +168,7 @@ export const CuadriculaRiesgoPage: React.FC = () => {
         vendedorFiltro !== 'all' ? vendedorFiltro : undefined
       );
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'No se pudo bloquear el número.');
+      toast.error(err.response?.data?.detail || 'No se pudo configurar el límite del número.');
     } finally {
       setActionLoading(false);
     }
@@ -193,7 +213,8 @@ export const CuadriculaRiesgoPage: React.FC = () => {
         totalVendido: 0,
         cantidadJugadas: 0,
         riesgoEstimadoPremio: 0,
-        estaBloqueado: false
+        estaBloqueado: false,
+        montoLimite: null
       }
     );
   }
@@ -338,23 +359,42 @@ export const CuadriculaRiesgoPage: React.FC = () => {
                           <td
                             onClick={() => handleOpenModal(celda)}
                             className="w-[45px] text-center font-black text-xs font-mono border-r-2 border-black dark:border-slate-500 cursor-pointer bg-[#00BCD4] text-black hover:opacity-85 transition-opacity px-1 py-0.5 select-none"
-                            title={`Número #${celda.numero} - Haz clic para gestionar bloqueo/tope`}
+                            title={`Número #${celda.numero} - Haz clic para configurar límite de venta o bloqueo`}
                           >
                             <div className="flex items-center justify-center gap-0.5">
-                              {isBloqueado && <Lock className="w-2.5 h-2.5 text-red-600 shrink-0" />}
+                              {isBloqueado && (celda.montoLimite === 0 || celda.montoLimite === null) && (
+                                <Lock className="w-2.5 h-2.5 text-red-700 shrink-0" />
+                              )}
                               <span>{celda.numero}</span>
                             </div>
                           </td>
 
-                          {/* Subcolumna 2: Monto Apostado (Texto Rojo Bold, Vacío si es 0, Borde separador entre bloques de columnas) */}
+                          {/* Subcolumna 2: Límite / Tope de Venta (Texto Rojo Bold, Borde separador entre bloques de columnas) */}
                           <td
                             onClick={() => handleOpenModal(celda)}
                             className={`text-center font-black text-xs font-mono cursor-pointer bg-white dark:bg-slate-900 text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors px-1 py-0.5 select-none ${
                               !isLastCol ? 'border-r-2 border-black dark:border-slate-500' : ''
                             }`}
-                            title={hasBet ? `Apostado: $${celda.totalVendido.toFixed(2)} | Riesgo: $${celda.riesgoEstimadoPremio.toFixed(0)}` : `Número #${celda.numero} sin apuestas`}
+                            title={
+                              celda.montoLimite !== undefined && celda.montoLimite !== null
+                                ? `Tope Máximo: $${celda.montoLimite} | Vendido: $${celda.totalVendido.toFixed(2)} | Alcance: ${celda.alcanceBloqueo || 'Global'}`
+                                : hasBet
+                                ? `Apostado: $${celda.totalVendido.toFixed(2)} | Riesgo: $${celda.riesgoEstimadoPremio.toFixed(0)}`
+                                : `Número #${celda.numero} (Sin límite configurado)`
+                            }
                           >
-                            {hasBet ? Math.round(celda.totalVendido) : ''}
+                            {(() => {
+                              if (celda.montoLimite !== undefined && celda.montoLimite !== null) {
+                                if (celda.montoLimite === 0) {
+                                  return <span className="text-[10px] text-red-600 dark:text-red-400 font-bold">BLOQ</span>;
+                                }
+                                return Math.round(celda.montoLimite);
+                              }
+                              if (hasBet) {
+                                return Math.round(celda.totalVendido);
+                              }
+                              return '';
+                            })()}
                           </td>
                         </React.Fragment>
                       );
@@ -394,135 +434,222 @@ export const CuadriculaRiesgoPage: React.FC = () => {
             </div>
 
             <div className="mt-4 space-y-4">
-              {numeroModal.estaBloqueado ? (
-                <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 space-y-3">
-                  <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 text-xs font-bold">
-                    <Lock className="w-4 h-4 shrink-0" />
-                    <span>Este número se encuentra actualmente bloqueado para ventas.</span>
+              {/* Resumen del Estado Actual */}
+              {numeroModal.estaBloqueado && (
+                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 space-y-1.5">
+                  <div className="flex items-center justify-between text-amber-800 dark:text-amber-300 text-xs font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5" />
+                      Estado: {numeroModal.montoLimite && numeroModal.montoLimite > 0 ? `Tope Máximo Activo ($${numeroModal.montoLimite})` : 'Corte Total (Bloqueado)'}
+                    </span>
+                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-amber-200/60 dark:bg-amber-900/60 font-mono">
+                      {numeroModal.alcanceBloqueo || 'Global'}
+                    </span>
                   </div>
                   {numeroModal.motivoBloqueo && (
-                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
                       Motivo: <em>"{numeroModal.motivoBloqueo}"</em>
                     </p>
                   )}
+                </div>
+              )}
 
+              {/* Selector de Tipo: Límite de Venta vs Corte Total */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Tipo de Restricción
+                </label>
+                <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => handleDesbloquearNumero(numeroModal.numero)}
-                    disabled={actionLoading}
-                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    type="button"
+                    onClick={() => {
+                      setModalTipoTope('LIMITE');
+                      if (!modalMontoLimite || Number(modalMontoLimite) === 0) setModalMontoLimite(1600);
+                    }}
+                    className={`py-2 px-3 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      modalTipoTope === 'LIMITE'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                    }`}
                   >
-                    {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
-                    Desbloquear y Permitir Ventas
+                    Límite / Tope ($)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalTipoTope('TOTAL');
+                      setModalMontoLimite(0);
+                    }}
+                    className={`py-2 px-3 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      modalTipoTope === 'TOTAL'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    Corte Total ($0)
                   </button>
                 </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                      Alcance del Bloqueo
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
+              </div>
+
+              {/* Monto Límite si es Tope */}
+              {modalTipoTope === 'LIMITE' && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Monto Límite de Venta ($)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={modalMontoLimite}
+                    onChange={(e) => setModalMontoLimite(e.target.value)}
+                    placeholder="ej. 1600"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono font-bold"
+                    required
+                  />
+
+                  {/* Atajos de Topes Comunes */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Topes rápidos:</span>
+                    {[50, 100, 400, 1600, 2400].map((v) => (
                       <button
+                        key={v}
                         type="button"
-                        onClick={() => setModalAlcance('GLOBAL')}
-                        className={`py-2 px-2 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                          modalAlcance === 'GLOBAL'
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                            : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400'
+                        onClick={() => setModalMontoLimite(v)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border transition-all cursor-pointer ${
+                          Number(modalMontoLimite) === v
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-indigo-500'
                         }`}
                       >
-                        Global
+                        ${v}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setModalAlcance('POR_ZONA')}
-                        className={`py-2 px-2 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                          modalAlcance === 'POR_ZONA'
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                            : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400'
-                        }`}
-                      >
-                        Por Sucursal
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setModalAlcance('POR_VENDEDOR')}
-                        className={`py-2 px-2 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                          modalAlcance === 'POR_VENDEDOR'
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                            : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400'
-                        }`}
-                      >
-                        Por Vendedor
-                      </button>
-                    </div>
+                    ))}
                   </div>
-
-                  {modalAlcance === 'POR_ZONA' && (
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                        Sucursal Afectada
-                      </label>
-                      <CustomSelect
-                        options={zonas.map(z => ({ value: z.id.toString(), label: z.nombre }))}
-                        value={modalZonaId}
-                        onChange={(val) => setModalZonaId(val)}
-                        placeholder="Seleccionar Sucursal"
-                      />
-                    </div>
-                  )}
-
-                  {modalAlcance === 'POR_VENDEDOR' && (
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                        Vendedor Afectado
-                      </label>
-                      <CustomSelect
-                        options={vendedores.map(v => ({ 
-                          value: v.id, 
-                          label: `${v.nombres} ${v.apellidos}`.trim() || v.username, 
-                          sublabel: v.zonaNombre || 'Sin Sucursal' 
-                        }))}
-                        value={modalVendedorId}
-                        onChange={(val) => setModalVendedorId(val)}
-                        placeholder="Seleccionar Vendedor"
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                      Motivo del Bloqueo
-                    </label>
-                    <input
-                      type="text"
-                      value={modalMotivo}
-                      onChange={(e) => setModalMotivo(e.target.value)}
-                      placeholder="ej. Tope financiero alcanzado"
-                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
-                    />
-                  </div>
-
-                  <div className="pt-2 flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setNumeroModal(null)}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleBloquearNumero}
-                      disabled={actionLoading}
-                      className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
-                    >
-                      {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                      Confirmar Bloqueo
-                    </button>
-                  </div>
-                </>
+                </div>
               )}
+
+              {/* Alcance del Bloqueo / Límite */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Alcance del Límite
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalAlcance('GLOBAL')}
+                    className={`py-2 px-2 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      modalAlcance === 'GLOBAL'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400'
+                    }`}
+                  >
+                    Global
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalAlcance('POR_ZONA')}
+                    className={`py-2 px-2 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      modalAlcance === 'POR_ZONA'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400'
+                    }`}
+                  >
+                    Por Sucursal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalAlcance('POR_VENDEDOR')}
+                    className={`py-2 px-2 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      modalAlcance === 'POR_VENDEDOR'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400'
+                    }`}
+                  >
+                    Por Vendedor
+                  </button>
+                </div>
+              </div>
+
+              {modalAlcance === 'POR_ZONA' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Sucursal Afectada
+                  </label>
+                  <CustomSelect
+                    options={zonas.map(z => ({ value: z.id.toString(), label: z.nombre }))}
+                    value={modalZonaId}
+                    onChange={(val) => setModalZonaId(val)}
+                    placeholder="Seleccionar Sucursal"
+                  />
+                </div>
+              )}
+
+              {modalAlcance === 'POR_VENDEDOR' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Vendedor Afectado
+                  </label>
+                  <CustomSelect
+                    options={vendedores.map(v => ({ 
+                      value: v.id, 
+                      label: `${v.nombres} ${v.apellidos}`.trim() || v.username, 
+                      sublabel: v.zonaNombre || 'Sin Sucursal' 
+                    }))}
+                    value={modalVendedorId}
+                    onChange={(val) => setModalVendedorId(val)}
+                    placeholder="Seleccionar Vendedor"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Motivo (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={modalMotivo}
+                  onChange={(e) => setModalMotivo(e.target.value)}
+                  placeholder="ej. Tope de riesgo financiero"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-between gap-2">
+                <div>
+                  {numeroModal.estaBloqueado && (
+                    <button
+                      type="button"
+                      onClick={() => handleDesbloquearNumero(numeroModal.numero)}
+                      disabled={actionLoading}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Unlock className="w-3.5 h-3.5" />
+                      Quitar Tope
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNumeroModal(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBloquearNumero}
+                    disabled={actionLoading}
+                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                    Guardar Límite
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

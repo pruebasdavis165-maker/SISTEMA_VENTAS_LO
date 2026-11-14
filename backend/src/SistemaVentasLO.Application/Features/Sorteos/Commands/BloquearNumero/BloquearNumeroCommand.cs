@@ -13,6 +13,7 @@ public record BloquearNumeroCommand(
     string Alcance = "GLOBAL",
     int? ZonaId = null,
     Guid? VendedorId = null,
+    decimal MontoLimite = 0,
     string? Motivo = null,
     Guid? CreadoPor = null
 ) : IRequest<long>;
@@ -53,16 +54,21 @@ public class BloquearNumeroCommandHandler : IRequestHandler<BloquearNumeroComman
         if (sorteo.Estado == "LIQUIDADO" || sorteo.Estado == "CANCELADO")
             throw new DomainException($"No se pueden aplicar bloqueos a un sorteo en estado {sorteo.Estado}.");
 
-        // Verificar si ya existe bloqueo idéntico
-        var existe = await _context.BloqueosNumeros
-            .AnyAsync(b => b.SorteoId == request.SorteoId &&
+        // Verificar si ya existe bloqueo para este alcance y actualizar límite
+        var bloqueoExistente = await _context.BloqueosNumeros
+            .FirstOrDefaultAsync(b => b.SorteoId == request.SorteoId &&
                            b.Numero == request.Numero &&
                            b.Alcance == request.Alcance &&
                            b.ZonaId == request.ZonaId &&
                            b.VendedorId == request.VendedorId, cancellationToken);
 
-        if (existe)
-            throw new DomainException($"El número {request.Numero} ya se encuentra bloqueado con este alcance.");
+        if (bloqueoExistente != null)
+        {
+            bloqueoExistente.MontoLimite = request.MontoLimite;
+            bloqueoExistente.Motivo = request.Motivo ?? (request.MontoLimite > 0 ? $"Tope de venta máximo: ${request.MontoLimite:N2}" : "Bloqueo total de venta");
+            await _context.SaveChangesAsync(cancellationToken);
+            return bloqueoExistente.Id;
+        }
 
         var bloqueo = new BloqueoNumero
         {
@@ -71,7 +77,8 @@ public class BloquearNumeroCommandHandler : IRequestHandler<BloquearNumeroComman
             Alcance = request.Alcance,
             ZonaId = request.ZonaId,
             VendedorId = request.VendedorId,
-            Motivo = request.Motivo ?? "Bloqueo por excedente de riesgo financiero",
+            MontoLimite = request.MontoLimite,
+            Motivo = request.Motivo ?? (request.MontoLimite > 0 ? $"Tope de venta máximo: ${request.MontoLimite:N2}" : "Bloqueo total de venta"),
             CreadoPor = request.CreadoPor ?? Guid.Empty,
             CreatedAt = DateTime.UtcNow
         };

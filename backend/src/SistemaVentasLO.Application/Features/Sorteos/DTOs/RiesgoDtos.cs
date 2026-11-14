@@ -6,6 +6,7 @@ public record NumeroCuadriculaDto(
     int CantidadJugadas,
     decimal RiesgoEstimadoPremio,
     bool EstaBloqueado,
+    decimal? MontoLimite,
     string? AlcanceBloqueo,
     string? MotivoBloqueo
 );
@@ -25,6 +26,7 @@ public record BloquearNumeroRequest(
     string Alcance = "GLOBAL",
     int? ZonaId = null,
     Guid? VendedorId = null,
+    decimal MontoLimite = 0,
     string? Motivo = null
 );
 

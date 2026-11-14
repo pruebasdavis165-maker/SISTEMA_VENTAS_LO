@@ -92,7 +92,7 @@ public class EmitirBoletoCommandHandler : IRequestHandler<EmitirBoletoCommand, B
             throw new InvalidOperationException("El total apostado debe ser mayor a cero.");
         }
 
-        // 4. Validar Bloqueos de Riesgo (Global, Zona, Vendedor)
+        // 4. Validar Bloqueos de Riesgo y Límites de Venta por Número (Global, Zona, Vendedor)
         var numerosJugados = request.Jugadas.Select(j => j.Numero).Distinct().ToList();
         var bloqueos = await _context.BloqueosNumeros
             .Where(b => b.SorteoId == request.SorteoId && numerosJugados.Contains(b.Numero))
@@ -103,8 +103,37 @@ public class EmitirBoletoCommandHandler : IRequestHandler<EmitirBoletoCommand, B
 
         if (bloqueos.Any())
         {
-            var b = bloqueos.First();
-            throw new InvalidOperationException($"El número {b.Numero} está bloqueado por riesgo financiero ({b.Alcance}): {b.Motivo ?? "Sin motivo especificado"}.");
+            foreach (var jugada in request.Jugadas)
+            {
+                var bloqueo = bloqueos.FirstOrDefault(b => b.Numero == jugada.Numero);
+                if (bloqueo != null)
+                {
+                    if (bloqueo.MontoLimite <= 0)
+                    {
+                        throw new InvalidOperationException($"El número {jugada.Numero} se encuentra bloqueado para venta ({bloqueo.Alcance}): {bloqueo.Motivo ?? "Corte de riesgo total"}.");
+                    }
+
+                    // Validar si la jugada excede el límite de venta permitido
+                    var jugadasPreviasQuery = _context.DetalleJugadas
+                        .Where(j => j.SorteoId == request.SorteoId && j.Numero == jugada.Numero && j.Boleto.Estado == "ACTIVO");
+
+                    if (bloqueo.Alcance == "POR_VENDEDOR")
+                    {
+                        jugadasPreviasQuery = jugadasPreviasQuery.Where(j => j.Boleto.VendedorId == request.VendedorId);
+                    }
+                    else if (bloqueo.Alcance == "POR_ZONA")
+                    {
+                        jugadasPreviasQuery = jugadasPreviasQuery.Where(j => j.Boleto.ZonaId == zonaId);
+                    }
+
+                    var ventaAcumulada = await jugadasPreviasQuery.SumAsync(j => (decimal?)j.Monto, cancellationToken) ?? 0;
+                    if (ventaAcumulada + jugada.Monto > bloqueo.MontoLimite)
+                    {
+                        var cupoDisponible = Math.Max(0, bloqueo.MontoLimite - ventaAcumulada);
+                        throw new InvalidOperationException($"El número {jugada.Numero} excede su límite de venta máximo de ${bloqueo.MontoLimite:N2} ({bloqueo.Alcance}). Actualmente vendido: ${ventaAcumulada:N2}, disponible para apostar: ${cupoDisponible:N2}.");
+                    }
+                }
+            }
         }
 
         // 5. Registrar Transacción de Venta (Informativo, sin bloquear al vendedor)

@@ -104,6 +104,7 @@ public class ObtenerCuadriculaGlobalQueryHandler : IRequestHandler<ObtenerCuadri
             }
 
             bool estaBloqueado = bloqueosDict.TryGetValue(numStr, out var bloqueo);
+            decimal? montoLimite = estaBloqueado ? bloqueo!.MontoLimite : null;
 
             cuadricula.Add(new NumeroCuadriculaDto(
                 Numero: numStr,
@@ -111,6 +112,7 @@ public class ObtenerCuadriculaGlobalQueryHandler : IRequestHandler<ObtenerCuadri
                 CantidadJugadas: cantidadJugadas,
                 RiesgoEstimadoPremio: riesgoEstimado,
                 EstaBloqueado: estaBloqueado,
+                MontoLimite: montoLimite,
                 AlcanceBloqueo: estaBloqueado ? bloqueo!.Alcance : null,
                 MotivoBloqueo: estaBloqueado ? bloqueo!.Motivo : null
             ));

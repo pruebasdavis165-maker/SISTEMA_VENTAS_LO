@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS bloqueos_numeros (
     alcance VARCHAR(20) NOT NULL DEFAULT 'GLOBAL' CHECK (alcance IN ('GLOBAL', 'POR_ZONA', 'POR_VENDEDOR')),
     zona_id INT REFERENCES zonas(id),
     vendedor_id UUID REFERENCES usuarios(id),
+    monto_limite NUMERIC(12,2) DEFAULT 0,
     motivo VARCHAR(250),
     creado_por UUID NOT NULL REFERENCES usuarios(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
