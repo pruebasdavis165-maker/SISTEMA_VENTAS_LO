@@ -6,7 +6,13 @@ using SistemaVentasLO.Domain.Exceptions;
 
 namespace SistemaVentasLO.Application.Features.Sorteos.Commands.DesbloquearNumero;
 
-public record DesbloquearNumeroCommand(long SorteoId, string Numero, string? Alcance = null) : IRequest<bool>;
+public record DesbloquearNumeroCommand(
+    long SorteoId, 
+    string Numero, 
+    string? Alcance = null,
+    Guid? VendedorId = null,
+    int? ZonaId = null
+) : IRequest<bool>;
 
 public class DesbloquearNumeroCommandValidator : AbstractValidator<DesbloquearNumeroCommand>
 {
@@ -39,10 +45,32 @@ public class DesbloquearNumeroCommandHandler : IRequestHandler<DesbloquearNumero
             bloqueosQuery = bloqueosQuery.Where(b => b.Alcance == request.Alcance);
         }
 
+        if (request.VendedorId.HasValue)
+        {
+            bloqueosQuery = bloqueosQuery.Where(b => b.VendedorId == request.VendedorId.Value);
+        }
+
+        if (request.ZonaId.HasValue)
+        {
+            bloqueosQuery = bloqueosQuery.Where(b => b.ZonaId == request.ZonaId.Value);
+        }
+
         var bloqueos = await bloqueosQuery.ToListAsync(cancellationToken);
 
         if (!bloqueos.Any())
-            throw new DomainException($"No se encontraron bloqueos para el número {request.Numero} en este sorteo.");
+        {
+            // Si se intentó un desbloqueo específico pero no existe exactamente, pero existe para el número, permitir desbloquear
+            var anyBloqueo = await _context.BloqueosNumeros
+                .Where(b => b.SorteoId == request.SorteoId && b.Numero == request.Numero)
+                .ToListAsync(cancellationToken);
+            if (anyBloqueo.Any())
+            {
+                _context.BloqueosNumeros.RemoveRange(anyBloqueo);
+                await _context.SaveChangesAsync(cancellationToken);
+                return true;
+            }
+            return true;
+        }
 
         _context.BloqueosNumeros.RemoveRange(bloqueos);
         await _context.SaveChangesAsync(cancellationToken);

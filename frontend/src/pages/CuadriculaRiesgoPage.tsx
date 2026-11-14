@@ -45,6 +45,7 @@ export const CuadriculaRiesgoPage: React.FC = () => {
   const [numeroModal, setNumeroModal] = useState<NumeroCuadricula | null>(null);
   const [modalAlcance, setModalAlcance] = useState<'GLOBAL' | 'POR_ZONA' | 'POR_VENDEDOR'>('GLOBAL');
   const [modalZonaId, setModalZonaId] = useState<string>('');
+  const [modalVendedorId, setModalVendedorId] = useState<string>('');
   const [modalMotivo, setModalMotivo] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -113,8 +114,17 @@ export const CuadriculaRiesgoPage: React.FC = () => {
 
   const handleOpenModal = (celda: NumeroCuadricula) => {
     setNumeroModal(celda);
-    setModalAlcance('GLOBAL');
+    if (vendedorFiltro !== 'all') {
+      setModalAlcance('POR_VENDEDOR');
+      setModalVendedorId(vendedorFiltro);
+    } else if (zonaFiltro !== 'all') {
+      setModalAlcance('POR_ZONA');
+      setModalZonaId(zonaFiltro);
+    } else {
+      setModalAlcance('GLOBAL');
+    }
     setModalZonaId(zonaFiltro !== 'all' ? zonaFiltro : (zonas[0]?.id.toString() || ''));
+    setModalVendedorId(vendedorFiltro !== 'all' ? vendedorFiltro : (vendedores[0]?.id || ''));
     setModalMotivo(celda.motivoBloqueo || 'Tope de riesgo preventivo');
   };
 
@@ -126,6 +136,7 @@ export const CuadriculaRiesgoPage: React.FC = () => {
         numero: numeroModal.numero,
         alcance: modalAlcance,
         zonaId: modalAlcance === 'POR_ZONA' && modalZonaId ? Number(modalZonaId) : undefined,
+        vendedorId: modalAlcance === 'POR_VENDEDOR' && modalVendedorId ? modalVendedorId : undefined,
         motivo: modalMotivo
       });
 
@@ -147,7 +158,12 @@ export const CuadriculaRiesgoPage: React.FC = () => {
     if (!sorteoSeleccionado) return;
     setActionLoading(true);
     try {
-      await api.delete(`/sorteos/${sorteoSeleccionado}/bloquear-numero/${numero}`);
+      const params: Record<string, any> = {};
+      if (modalAlcance) params.alcance = modalAlcance;
+      if (modalAlcance === 'POR_VENDEDOR' && modalVendedorId) params.vendedorId = modalVendedorId;
+      if (modalAlcance === 'POR_ZONA' && modalZonaId) params.zonaId = Number(modalZonaId);
+
+      await api.delete(`/sorteos/${sorteoSeleccionado}/desbloquear-numero/${numero}`, { params });
       toast.success(`Número #${numero} desbloqueado exitosamente.`);
       setNumeroModal(null);
       await cargarCuadricula(
@@ -405,28 +421,39 @@ export const CuadriculaRiesgoPage: React.FC = () => {
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                       Alcance del Bloqueo
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() => setModalAlcance('GLOBAL')}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        className={`py-2 px-2 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                           modalAlcance === 'GLOBAL'
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400'
                         }`}
                       >
-                        Global (Todas las Zonas)
+                        Global
                       </button>
                       <button
                         type="button"
                         onClick={() => setModalAlcance('POR_ZONA')}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        className={`py-2 px-2 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                           modalAlcance === 'POR_ZONA'
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400'
                         }`}
                       >
-                        Por Sucursal Específica
+                        Por Sucursal
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setModalAlcance('POR_VENDEDOR')}
+                        className={`py-2 px-2 text-center rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          modalAlcance === 'POR_VENDEDOR'
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-slate-400'
+                        }`}
+                      >
+                        Por Vendedor
                       </button>
                     </div>
                   </div>
@@ -441,6 +468,24 @@ export const CuadriculaRiesgoPage: React.FC = () => {
                         value={modalZonaId}
                         onChange={(val) => setModalZonaId(val)}
                         placeholder="Seleccionar Sucursal"
+                      />
+                    </div>
+                  )}
+
+                  {modalAlcance === 'POR_VENDEDOR' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                        Vendedor Afectado
+                      </label>
+                      <CustomSelect
+                        options={vendedores.map(v => ({ 
+                          value: v.id, 
+                          label: `${v.nombres} ${v.apellidos}`.trim() || v.username, 
+                          sublabel: v.zonaNombre || 'Sin Sucursal' 
+                        }))}
+                        value={modalVendedorId}
+                        onChange={(val) => setModalVendedorId(val)}
+                        placeholder="Seleccionar Vendedor"
                       />
                     </div>
                   )}

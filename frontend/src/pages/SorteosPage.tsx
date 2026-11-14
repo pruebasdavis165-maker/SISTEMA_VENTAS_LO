@@ -13,7 +13,8 @@ import {
   ChevronLeft, 
   ChevronRight, 
   History, 
-  RefreshCw 
+  RefreshCw,
+  Trash2 
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Sorteo, HorarioConfiguracion, SorteoDetalle, SorteoHistorial } from '../types/sorteos';
@@ -72,6 +73,16 @@ export const SorteosPage: React.FC = () => {
   const [selectedSorteo, setSelectedSorteo] = useState<Sorteo | null>(null);
   const [editHoraCierre, setEditHoraCierre] = useState('');
   const [editEstado, setEditEstado] = useState('ABIERTO');
+
+  // Modal: Crear / Editar Horario Recurrente (Plantilla)
+  const [isHorarioModalOpen, setIsHorarioModalOpen] = useState(false);
+  const [editingHorarioId, setEditingHorarioId] = useState<number | null>(null);
+  const [horarioNombre, setHorarioNombre] = useState('');
+  const [horarioHoraCierre, setHorarioHoraCierre] = useState('11:00:00');
+  const [horarioMinutosBloqueo, setHorarioMinutosBloqueo] = useState(5);
+  const [horarioDiasSemana, setHorarioDiasSemana] = useState('L,M,X,J,V,S,D');
+  const [horarioActivo, setHorarioActivo] = useState(true);
+  const [savingHorario, setSavingHorario] = useState(false);
 
   const loadData = async () => {
     try {
@@ -225,6 +236,96 @@ export const SorteosPage: React.FC = () => {
       await loadData();
     } catch {
       toast.error('No se pudo cambiar el estado del sorteo.');
+    }
+  };
+
+  const handleDeleteSorteo = async (sorteoId: number) => {
+    if (!window.confirm('¿Deseas eliminar o cancelar este sorteo del día? Si ya tiene ventas, será cancelado para mantener la auditoría.')) {
+      return;
+    }
+    try {
+      const res = await api.delete<{ mensaje: string }>(`/sorteos/${sorteoId}`);
+      toast.success(res.data?.mensaje || 'Sorteo procesado exitosamente.');
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'No se pudo eliminar el sorteo.');
+    }
+  };
+
+  const handleOpenCreateHorario = () => {
+    setEditingHorarioId(null);
+    setHorarioNombre('');
+    setHorarioHoraCierre('12:00:00');
+    setHorarioMinutosBloqueo(5);
+    setHorarioDiasSemana('L,M,X,J,V,S,D');
+    setHorarioActivo(true);
+    setIsHorarioModalOpen(true);
+  };
+
+  const handleOpenEditHorario = (h: HorarioConfiguracion) => {
+    setEditingHorarioId(h.id);
+    setHorarioNombre(h.nombre);
+    setHorarioHoraCierre(h.horaCierre.length === 5 ? `${h.horaCierre}:00` : h.horaCierre);
+    setHorarioMinutosBloqueo(h.minutosBloqueoPrevio);
+    setHorarioDiasSemana(h.diasSemana || 'L,M,X,J,V,S,D');
+    setHorarioActivo(h.activo);
+    setIsHorarioModalOpen(true);
+  };
+
+  const handleSaveHorario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!horarioNombre.trim()) {
+      toast.error('El nombre del sorteo es obligatorio.');
+      return;
+    }
+
+    try {
+      setSavingHorario(true);
+      const payload = {
+        nombre: horarioNombre.trim(),
+        horaCierre: horarioHoraCierre.length === 5 ? `${horarioHoraCierre}:00` : horarioHoraCierre,
+        minutosBloqueoPrevio: Number(horarioMinutosBloqueo) || 5,
+        diasSemana: horarioDiasSemana,
+        activo: horarioActivo
+      };
+
+      if (editingHorarioId) {
+        await api.put(`/sorteos/horarios/${editingHorarioId}`, payload);
+        toast.success('Turno recurrente actualizado exitosamente.');
+      } else {
+        await api.post('/sorteos/horarios', payload);
+        toast.success('Nuevo turno recurrente creado.');
+      }
+
+      setIsHorarioModalOpen(false);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Error al guardar horario.');
+    } finally {
+      setSavingHorario(false);
+    }
+  };
+
+  const handleToggleHorario = async (id: number) => {
+    try {
+      const res = await api.patch<HorarioConfiguracion>(`/sorteos/horarios/${id}/toggle`);
+      setHorarios(prev => prev.map(h => h.id === id ? res.data : h));
+      toast.success(`Turno ${res.data.activo ? 'activado' : 'desactivado'} para la generación diaria.`);
+    } catch {
+      toast.error('No se pudo cambiar el estado del horario.');
+    }
+  };
+
+  const handleDeleteHorario = async (id: number) => {
+    if (!window.confirm('¿Deseas eliminar este turno recurrente? Si ya tiene sorteos pasados, quedará desactivado.')) {
+      return;
+    }
+    try {
+      await api.delete(`/sorteos/horarios/${id}`);
+      toast.success('Horario eliminado / desactivado.');
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'No se pudo eliminar el horario.');
     }
   };
 
@@ -481,6 +582,16 @@ export const SorteosPage: React.FC = () => {
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSorteo(sorteo.id);
+                            }}
+                            className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded transition-colors cursor-pointer"
+                            title="Eliminar o Cancelar Sorteo del Día"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
 
@@ -536,25 +647,105 @@ export const SorteosPage: React.FC = () => {
             </div>
           )}
 
-          {/* Reglas de Horarios Diarios Registrados */}
-          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-            <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4">
-              Horarios Oficiales Registrados
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Plantillas de Turnos Recurrentes (Generación Automática Diaria) */}
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div>
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                    Plantillas de Turnos Recurrentes (Generación Automática)
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-3xl">
+                  Estos horarios fijos definen qué turnos oficiales se generan automáticamente cada día a las 5:00 AM (y al presionar <strong>"Generar Turnos del Día"</strong>).
+                  Puedes activar o desactivar turnos con un solo clic (ej. si hoy no juegan a las 6:00 PM), editar su hora de cierre o agregar nuevos horarios oficiales.
+                </p>
+              </div>
+
+              <button
+                onClick={handleOpenCreateHorario}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Nuevo Turno Recurrente</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
               {horarios.map((h) => (
-                <div key={h.id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-slate-900 dark:text-white block">{h.nombre}</span>
-                    <span className="text-xs text-indigo-600 dark:text-indigo-400 font-mono font-bold">{h.horaCierre.substring(0, 5)}</span>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                <div 
+                  key={h.id} 
+                  className={`p-4 rounded-xl border transition-all ${
                     h.activo 
-                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' 
-                      : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                  }`}>
-                    {h.activo ? 'ACTIVO' : 'INACTIVO'}
-                  </span>
+                      ? 'bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 shadow-xs' 
+                      : 'bg-slate-100/50 dark:bg-slate-900/30 border-dashed border-slate-300 dark:border-slate-800 opacity-60'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                        {h.nombre}
+                      </span>
+                      <span className="text-lg font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                        {h.horaCierre.substring(0, 5)}
+                      </span>
+                    </div>
+
+                    {/* Switch Toggle Activo */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleHorario(h.id)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        h.activo ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                      title={h.activo ? 'Turno Activo (Se genera automáticamente)' : 'Turno Inactivo (No se generará)'}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          h.activo ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="space-y-1 text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800/80 pt-2">
+                    <div className="flex justify-between">
+                      <span>Cierre de ventas:</span>
+                      <strong className="text-slate-700 dark:text-slate-300 font-mono">{h.minutosBloqueoPrevio} min antes</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Días activos:</span>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">{h.diasSemana || 'L,M,X,J,V,S,D'}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1">
+                      <span>Estado:</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        h.activo 
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' 
+                          : 'bg-slate-500/10 text-slate-400'
+                      }`}>
+                        {h.activo ? 'ACTIVO' : 'DESACTIVADO'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1 mt-2.5 pt-2 border-t border-slate-200 dark:border-slate-800/80 text-xs">
+                    <button
+                      onClick={() => handleOpenEditHorario(h)}
+                      className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
+                      title="Editar Horario"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteHorario(h.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar Horario"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -951,6 +1142,120 @@ export const SorteosPage: React.FC = () => {
                 >
                   {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Crear / Editar Plantilla de Turno Recurrente */}
+      {isHorarioModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <CalendarClock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {editingHorarioId ? 'Editar Turno Recurrente' : 'Nuevo Turno Recurrente'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsHorarioModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveHorario} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Nombre del Turno Oficial
+                </label>
+                <input
+                  type="text"
+                  value={horarioNombre}
+                  onChange={(e) => setHorarioNombre(e.target.value)}
+                  placeholder="ej. Sorteo Mediodía"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Hora de Cierre
+                  </label>
+                  <input
+                    type="time"
+                    step="1"
+                    value={horarioHoraCierre}
+                    onChange={(e) => setHorarioHoraCierre(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono font-bold"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                    Bloqueo Previo (Min)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={horarioMinutosBloqueo}
+                    onChange={(e) => setHorarioMinutosBloqueo(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono font-bold"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Días que Opera
+                </label>
+                <input
+                  type="text"
+                  value={horarioDiasSemana}
+                  onChange={(e) => setHorarioDiasSemana(e.target.value)}
+                  placeholder="L,M,X,J,V,S,D"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono font-medium"
+                  required
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">Separados por coma: L, M, X, J, V, S, D</span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Activar para generación diaria
+                </span>
+                <input
+                  type="checkbox"
+                  checked={horarioActivo}
+                  onChange={(e) => setHorarioActivo(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsHorarioModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingHorario}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {savingHorario && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {editingHorarioId ? 'Guardar Cambios' : 'Crear Turno Recurrente'}
                 </button>
               </div>
             </form>

@@ -38,7 +38,15 @@ public class ObtenerCuadriculaGlobalQueryHandler : IRequestHandler<ObtenerCuadri
         }
         else if (request.VendedorId.HasValue)
         {
-            bloqueosQuery = bloqueosQuery.Where(b => b.Alcance == "GLOBAL" || (b.Alcance == "POR_VENDEDOR" && b.VendedorId == request.VendedorId.Value));
+            var vendedor = await _context.Usuarios
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == request.VendedorId.Value, cancellationToken);
+            var vZonaId = vendedor?.ZonaId;
+
+            bloqueosQuery = bloqueosQuery.Where(b => 
+                b.Alcance == "GLOBAL" || 
+                (b.Alcance == "POR_VENDEDOR" && b.VendedorId == request.VendedorId.Value) ||
+                (vZonaId.HasValue && b.Alcance == "POR_ZONA" && b.ZonaId == vZonaId.Value));
         }
 
         var bloqueos = await bloqueosQuery.ToListAsync(cancellationToken);
