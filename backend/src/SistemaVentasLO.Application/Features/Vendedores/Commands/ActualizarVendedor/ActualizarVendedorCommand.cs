@@ -25,7 +25,8 @@ public class ActualizarVendedorCommandValidator : AbstractValidator<ActualizarVe
     {
         RuleFor(x => x.Cedula)
             .NotEmpty().WithMessage("La cédula es obligatoria.")
-            .MaximumLength(20);
+            .MaximumLength(20)
+            .Matches(@"^[0-9]{3}-?[0-9]{6}-?[0-9]{4}[A-Z]$").WithMessage("La cédula debe ser válida para Nicaragua y terminar con letra MAYÚSCULA (ej. 001-120595-0002B).");
 
         RuleFor(x => x.Nombres).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Apellidos).NotEmpty().MaximumLength(100);
@@ -70,7 +71,7 @@ public class ActualizarVendedorCommandHandler : IRequestHandler<ActualizarVended
             throw new DomainException($"Ya existe otro usuario con la cédula '{request.Cedula.Trim()}'.");
         }
 
-        vendedor.Cedula = request.Cedula.Trim();
+        vendedor.Cedula = request.Cedula.Trim().ToUpperInvariant();
         vendedor.Nombres = request.Nombres.Trim();
         vendedor.Apellidos = request.Apellidos.Trim();
         vendedor.Celular = request.Celular?.Trim();

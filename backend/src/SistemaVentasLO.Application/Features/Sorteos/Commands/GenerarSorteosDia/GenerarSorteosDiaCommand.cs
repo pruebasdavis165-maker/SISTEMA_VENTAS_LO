@@ -36,7 +36,7 @@ public class GenerarSorteosDiaCommandHandler : IRequestHandler<GenerarSorteosDia
                 continue;
             }
 
-            var cierreDateTime = request.Fecha.ToDateTime(TimeOnly.FromTimeSpan(h.HoraCierre), DateTimeKind.Utc);
+            var cierreDateTime = SistemaVentasLO.Domain.Common.NicaraguaDateTime.ToUtc(request.Fecha, h.HoraCierre);
             var codigo = $"SRT-{request.Fecha:yyyyMMdd}-{h.HoraCierre:hhmm}";
             if (request.ZonaId.HasValue)
             {

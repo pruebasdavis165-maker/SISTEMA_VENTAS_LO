@@ -5,32 +5,40 @@ import {
   PlayCircle, 
   Lock, 
   CheckCircle2, 
-  AlertTriangle, 
   Loader2, 
   Clock, 
   X,
   Sparkles,
   Calendar,
-  Edit3
+  Edit3,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Sorteo, HorarioConfiguracion } from '../types/sorteos';
-import { Zona } from '../types/zonas';
+import { useToastStore } from '../store/useToastStore';
+import { CustomSelect } from '../components/common/CustomSelect';
+
+const getLocalDateString = (d: Date = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export const SorteosPage: React.FC = () => {
   const [sorteos, setSorteos] = useState<Sorteo[]>([]);
   const [horarios, setHorarios] = useState<HorarioConfiguracion[]>([]);
-  const [zonas, setZonas] = useState<Zona[]>([]);
-  const [selectedFecha, setSelectedFecha] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedFecha, setSelectedFecha] = useState(() => getLocalDateString());
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Toast
+  const toast = useToastStore();
 
   // Modal: Crear Sorteo Manual
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalHora, setModalHora] = useState('11:00:00');
-  const [modalZonaId, setModalZonaId] = useState<string>('all');
   const [isSaving, setIsSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -43,17 +51,14 @@ export const SorteosPage: React.FC = () => {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      setError(null);
-      const [resSorteos, resHorarios, resZonas] = await Promise.all([
+      const [resSorteos, resHorarios] = await Promise.all([
         api.get<Sorteo[]>(`/sorteos?fecha=${selectedFecha}`),
-        api.get<HorarioConfiguracion[]>('/sorteos/horarios'),
-        api.get<Zona[]>('/zonas?soloActivas=true')
+        api.get<HorarioConfiguracion[]>('/sorteos/horarios')
       ]);
       setSorteos(resSorteos.data);
       setHorarios(resHorarios.data);
-      setZonas(resZonas.data);
     } catch {
-      setError('Error al sincronizar sorteos y horarios del servidor.');
+      toast.error('Error al sincronizar sorteos y horarios del servidor.');
     } finally {
       setIsLoading(false);
     }
@@ -65,6 +70,13 @@ export const SorteosPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [selectedFecha]);
 
+  const changeDateBy = (days: number) => {
+    const parts = selectedFecha.split('-');
+    const current = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    current.setDate(current.getDate() + days);
+    setSelectedFecha(getLocalDateString(current));
+  };
+
   const handleGenerarDia = async () => {
     try {
       setIsGenerating(true);
@@ -74,15 +86,13 @@ export const SorteosPage: React.FC = () => {
       });
 
       if (res.data.length > 0) {
-        setSuccessMessage(`Se generaron ${res.data.length} sorteos oficiales para la fecha ${selectedFecha}.`);
+        toast.success(`Se generaron ${res.data.length} sorteos oficiales para la fecha ${selectedFecha}.`);
       } else {
-        setSuccessMessage(`Los turnos del día para ${selectedFecha} ya estaban generados.`);
+        toast.info(`Los turnos oficiales para ${selectedFecha} ya se encuentran generados.`);
       }
       await loadData();
-      setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al generar los sorteos automáticos del día.');
-      setTimeout(() => setError(null), 4000);
+      toast.error(err.response?.data?.detail || 'Error al generar los sorteos automáticos.');
     } finally {
       setIsGenerating(false);
     }
@@ -98,48 +108,52 @@ export const SorteosPage: React.FC = () => {
 
       await api.post('/sorteos', {
         fecha: selectedFecha,
-        horaCierre: horaCierre,
-        zonaId: modalZonaId === 'all' ? null : Number(modalZonaId),
-        horarioConfiguracionId: null
+        horaCierre,
+        zonaId: null,
+        minutosBloqueoAntes: 5
       });
 
-      setSuccessMessage('Sorteo extraordinario creado exitosamente.');
+      toast.success('Sorteo extraordinario creado exitosamente.');
       setIsModalOpen(false);
       await loadData();
-      setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
-      setModalError(err.response?.data?.detail || 'Error al programar el sorteo.');
+      setModalError(err.response?.data?.detail || 'No se pudo crear el sorteo.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleOpenEdit = (sorteo: Sorteo) => {
-    setSelectedSorteo(sorteo);
-    const dateObj = new Date(sorteo.horaCierre);
-    const hours = String(dateObj.getHours()).padStart(2, '0');
-    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-    setEditHoraCierre(`${hours}:${minutes}`);
-    setEditEstado(sorteo.estado);
+  const handleOpenEdit = (s: Sorteo) => {
+    setSelectedSorteo(s);
+    try {
+      const d = new Date(s.horaCierre);
+      const timeStr = d.toTimeString().substring(0, 5);
+      setEditHoraCierre(timeStr);
+    } catch {
+      setEditHoraCierre('11:00');
+    }
+    setEditEstado(s.estado);
     setIsEditModalOpen(true);
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSorteo) return;
+
     try {
       setIsSaving(true);
-      await api.patch(`/sorteos/${selectedSorteo.id}/estado`, {
-        nuevoEstado: editEstado
+      const isoHoraCierre = new Date(`${selectedFecha}T${editHoraCierre}:00`).toISOString();
+
+      await api.put(`/sorteos/${selectedSorteo.id}`, {
+        horaCierre: isoHoraCierre,
+        estado: editEstado
       });
 
-      setSuccessMessage(`Sorteo ${selectedSorteo.codigo} actualizado correctamente.`);
+      toast.success('Configuración del sorteo actualizada exitosamente.');
       setIsEditModalOpen(false);
       await loadData();
-      setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al actualizar el sorteo.');
-      setTimeout(() => setError(null), 4000);
+      toast.error(err.response?.data?.detail || 'No se pudo editar el sorteo.');
     } finally {
       setIsSaving(false);
     }
@@ -150,68 +164,78 @@ export const SorteosPage: React.FC = () => {
       await api.patch(`/sorteos/${sorteoId}/estado`, {
         nuevoEstado
       });
-      setSuccessMessage(`Estado del sorteo actualizado a: ${nuevoEstado}`);
+      toast.success(`Estado del sorteo actualizado a: ${nuevoEstado}`);
       await loadData();
-      setTimeout(() => setSuccessMessage(null), 3000);
     } catch {
-      setError('No se pudo cambiar el estado del sorteo.');
-      setTimeout(() => setError(null), 4000);
+      toast.error('No se pudo cambiar el estado del sorteo.');
     }
+  };
+
+  const formatHoraSorteo = (horaIso: string) => {
+    if (!horaIso) return '--:--';
+    const d = new Date(horaIso);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+    return horaIso;
   };
 
   const getEstadoBadge = (s: Sorteo) => {
     if (s.estado === 'LIQUIDADO') {
       return (
         <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30 flex items-center gap-1">
-          <CheckCircle2 className="w-3 h-3" />
-          Liquidado (Ganador: {s.numeroGanador})
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Liquidado (Ganador: <strong className="font-mono">{s.numeroGanador}</strong>)
         </span>
       );
     }
     if (s.estado === 'CERRADO_PENDIENTE_GANADOR') {
       return (
         <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30 flex items-center gap-1">
-          <Clock className="w-3 h-3" />
-          Esperando Ganador
+          <Clock className="w-3.5 h-3.5" />
+          Cerrado (Esperando Ganador)
         </span>
       );
     }
     if (s.estado === 'BLOQUEADO_VENTA' || !s.permiteVenta) {
       return (
-        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/15 dark:text-red-400 dark:border-red-500/30 flex items-center gap-1">
-          <Lock className="w-3 h-3" />
+        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/15 dark:text-rose-400 dark:border-rose-500/30 flex items-center gap-1">
+          <Lock className="w-3.5 h-3.5" />
           Ventas Bloqueadas
         </span>
       );
     }
     return (
       <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-400 dark:border-indigo-500/30 flex items-center gap-1">
-        <PlayCircle className="w-3 h-3" />
+        <PlayCircle className="w-3.5 h-3.5" />
         Venta Abierta ({s.minutosRestantesVenta} min restantes)
       </span>
     );
   };
 
+  const estadoSelectOptions = [
+    { value: 'ABIERTO', label: 'ABIERTO (Permite ventas)' },
+    { value: 'BLOQUEADO_VENTA', label: 'BLOQUEADO (Cierre temporal)' },
+    { value: 'CERRADO_PENDIENTE_GANADOR', label: 'CERRADO (Esperando Ganador)' },
+    { value: 'CANCELADO', label: 'CANCELADO' }
+  ];
+
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
-          <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs uppercase tracking-wider mb-1">
-            <CalendarClock className="w-4 h-4" />
-            Programación y Reglas de Horarios
-          </div>
-          <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white">Programación de Sorteos</h2>
-          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            Control de turnos diarios. Los sorteos se generan automáticamente y las ventas se bloquean antes del cierre del sorteo.
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Programación de Sorteos</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Generación diaria, control de horarios oficiales de cierre y bloqueo automático de ventas
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+        <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0">
           <button
             onClick={handleGenerarDia}
             disabled={isGenerating}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
           >
             {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             Generar Turnos del Día
@@ -219,31 +243,58 @@ export const SorteosPage: React.FC = () => {
 
           <button
             onClick={() => setIsModalOpen(true)}
-            className="inline-flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-white font-semibold text-xs border border-slate-300 dark:border-slate-700 transition-all"
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-white font-semibold text-xs border border-slate-300 dark:border-slate-700 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            Manual
+            Extraordinario
           </button>
         </div>
       </div>
 
-      {/* Date Quick Filter Bar */}
+      {/* Date Navigator Bar con UI/UX mejorada */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-          <span className="text-xs font-bold text-slate-700 dark:text-white uppercase tracking-wider">Fecha Seleccionada:</span>
-          <input
-            type="date"
-            value={selectedFecha}
-            onChange={(e) => setSelectedFecha(e.target.value)}
-            className="px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono font-medium"
-          />
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button
+              onClick={() => changeDateBy(-1)}
+              title="Día Anterior"
+              className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-white dark:hover:bg-slate-900 transition-all cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-2 px-2">
+              <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <input
+                type="date"
+                value={selectedFecha}
+                onChange={(e) => setSelectedFecha(e.target.value)}
+                className="bg-transparent border-none text-xs text-slate-900 dark:text-white focus:outline-none font-bold font-mono cursor-pointer"
+              />
+            </div>
+            <button
+              onClick={() => changeDateBy(1)}
+              title="Día Siguiente"
+              className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-white dark:hover:bg-slate-900 transition-all cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 self-end sm:self-auto text-xs">
+        <div className="flex items-center gap-2 self-end sm:self-auto text-xs font-semibold">
           <button
-            onClick={() => setSelectedFecha(new Date().toISOString().split('T')[0])}
-            className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold transition-colors"
+            onClick={() => {
+              const d = new Date();
+              d.setDate(d.getDate() - 1);
+              setSelectedFecha(getLocalDateString(d));
+            }}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+          >
+            Ayer
+          </button>
+          <button
+            onClick={() => setSelectedFecha(getLocalDateString())}
+            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-colors cursor-pointer shadow-sm"
           >
             Hoy
           </button>
@@ -251,28 +302,14 @@ export const SorteosPage: React.FC = () => {
             onClick={() => {
               const d = new Date();
               d.setDate(d.getDate() + 1);
-              setSelectedFecha(d.toISOString().split('T')[0]);
+              setSelectedFecha(getLocalDateString(d));
             }}
-            className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold transition-colors"
+            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
           >
             Mañana
           </button>
         </div>
       </div>
-
-      {/* Toast Notifications */}
-      {successMessage && (
-        <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          {successMessage}
-        </div>
-      )}
-      {error && (
-        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-xs font-semibold flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          {error}
-        </div>
-      )}
 
       {/* Sorteos Cards Grid */}
       {isLoading ? (
@@ -290,7 +327,7 @@ export const SorteosPage: React.FC = () => {
           <button
             onClick={handleGenerarDia}
             disabled={isGenerating}
-            className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-all"
+            className="mt-4 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm transition-all cursor-pointer"
           >
             Generar Sorteos Oficiales
           </button>
@@ -298,7 +335,7 @@ export const SorteosPage: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {sorteos.map((sorteo) => {
-            const horaFormatted = new Date(sorteo.horaCierre).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const horaFormatted = formatHoraSorteo(sorteo.horaCierre);
             return (
               <div
                 key={sorteo.id}
@@ -309,7 +346,7 @@ export const SorteosPage: React.FC = () => {
                     <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider">{sorteo.codigo}</span>
                     <button
                       onClick={() => handleOpenEdit(sorteo)}
-                      className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-white rounded transition-colors"
+                      className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-white rounded transition-colors cursor-pointer"
                       title="Editar Sorteo"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -317,7 +354,7 @@ export const SorteosPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-baseline gap-2 mb-2">
-                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">{horaFormatted}</h3>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white font-mono">{horaFormatted}</h3>
                     <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{sorteo.horarioNombre || 'Extraordinario'}</span>
                   </div>
 
@@ -330,7 +367,7 @@ export const SorteosPage: React.FC = () => {
                   {sorteo.estado === 'ABIERTO' && (
                     <button
                       onClick={() => handleCambiarEstado(sorteo.id, 'BLOQUEADO_VENTA')}
-                      className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-semibold"
+                      className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
                     >
                       <Lock className="w-3 h-3" />
                       Forzar Bloqueo
@@ -339,18 +376,22 @@ export const SorteosPage: React.FC = () => {
                   {sorteo.estado === 'BLOQUEADO_VENTA' && (
                     <button
                       onClick={() => handleCambiarEstado(sorteo.id, 'ABIERTO')}
-                      className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 font-semibold"
+                      className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
                     >
                       <PlayCircle className="w-3 h-3" />
-                      Reabrir Venta
+                      Reabrir Ventas
                     </button>
                   )}
                   {sorteo.estado === 'CERRADO_PENDIENTE_GANADOR' && (
-                    <span className="text-[11px] text-amber-600 dark:text-amber-300 font-mono">Pendiente Liquidación</span>
+                    <span className="text-[11px] text-slate-400 italic">Listo para liquidar</span>
                   )}
                   {sorteo.estado === 'LIQUIDADO' && (
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-mono font-bold">Ganador: #{sorteo.numeroGanador}</span>
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">Oficializado</span>
                   )}
+
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Tope: 5 min antes
+                  </span>
                 </div>
               </div>
             );
@@ -358,38 +399,112 @@ export const SorteosPage: React.FC = () => {
         </div>
       )}
 
-      {/* Horarios Oficiales Info Box */}
-      <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">Horarios Predefinidos del Sistema</h4>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {horarios.map(h => (
-            <div key={h.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-center">
-              <span className="font-black text-sm text-slate-900 dark:text-white block">{h.horaCierre.slice(0, 5)}</span>
-              <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold block truncate">{h.nombre}</span>
-              <span className="text-[10px] text-slate-500 mt-1 block">Bloqueo: -{h.minutosBloqueoPrevio} min</span>
+      {/* Reglas de Horarios Diarios */}
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+        <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4">
+          Horarios Oficiales Registrados
+        </h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {horarios.map((h) => (
+            <div key={h.id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-900 dark:text-white block">{h.nombre}</span>
+                <span className="text-xs text-indigo-600 dark:text-indigo-400 font-mono font-bold">{h.horaCierre.substring(0, 5)}</span>
+              </div>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                h.activo 
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' 
+                  : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+              }`}>
+                {h.activo ? 'ACTIVO' : 'PAUSADO'}
+              </span>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Modal: Editar Sorteo */}
+      {isEditModalOpen && selectedSorteo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                Editar Sorteo #{selectedSorteo.codigo}
+              </h3>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Hora de Cierre Oficial
+                </label>
+                <input
+                  type="time"
+                  value={editHoraCierre}
+                  onChange={(e) => setEditHoraCierre(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono font-bold"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Estado Operativo
+                </label>
+                <CustomSelect
+                  options={estadoSelectOptions}
+                  value={editEstado}
+                  onChange={(val) => setEditEstado(val)}
+                />
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Crear Sorteo Manual */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Programar Sorteo Manual</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                Programar Sorteo Extraordinario
+              </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {modalError && (
-              <div className="mt-4 p-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{modalError}</span>
+              <div className="mt-3 p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-700 dark:text-rose-400 text-xs font-semibold">
+                {modalError}
               </div>
             )}
 
@@ -403,111 +518,26 @@ export const SorteosPage: React.FC = () => {
                   step="1"
                   value={modalHora}
                   onChange={(e) => setModalHora(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:border-indigo-500 font-medium"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono font-bold"
                   required
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Zona / Sucursal
-                </label>
-                <select
-                  value={modalZonaId}
-                  onChange={(e) => setModalZonaId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
-                >
-                  <option value="all">Todas las Zonas (Global)</option>
-                  {zonas.map(z => (
-                    <option key={z.id} value={z.id}>{z.nombre}</option>
-                  ))}
-                </select>
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  disabled={isSaving}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
                 >
                   {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Programar Sorteo
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Editar Sorteo */}
-      {isEditModalOpen && selectedSorteo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Editar Sorteo: {selectedSorteo.codigo}
-              </h3>
-              <button
-                onClick={() => setIsEditModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEdit} className="mt-4 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Hora de Cierre
-                </label>
-                <input
-                  type="time"
-                  value={editHoraCierre}
-                  onChange={(e) => setEditHoraCierre(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:border-indigo-500 font-medium"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
-                  Estado Operativo
-                </label>
-                <select
-                  value={editEstado}
-                  onChange={(e) => setEditEstado(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 font-medium"
-                >
-                  <option value="ABIERTO">ABIERTO (Permite ventas)</option>
-                  <option value="BLOQUEADO_VENTA">BLOQUEADO_VENTA (Congelado)</option>
-                  <option value="CANCELADO">CANCELADO (No se juega)</option>
-                </select>
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  disabled={isSaving}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
-                >
-                  {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Guardar Cambios
                 </button>
               </div>
             </form>

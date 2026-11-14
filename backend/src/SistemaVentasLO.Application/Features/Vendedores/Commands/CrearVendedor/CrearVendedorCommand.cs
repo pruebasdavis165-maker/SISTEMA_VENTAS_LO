@@ -29,7 +29,8 @@ public class CrearVendedorCommandValidator : AbstractValidator<CrearVendedorComm
     {
         RuleFor(x => x.Cedula)
             .NotEmpty().WithMessage("La cédula del vendedor es obligatoria.")
-            .MaximumLength(20).WithMessage("La cédula no puede superar 20 caracteres.");
+            .MaximumLength(20).WithMessage("La cédula no puede superar 20 caracteres.")
+            .Matches(@"^[0-9]{3}-?[0-9]{6}-?[0-9]{4}[A-Z]$").WithMessage("La cédula debe ser válida para Nicaragua y terminar con letra MAYÚSCULA (ej. 001-120595-0002B).");
 
         RuleFor(x => x.Nombres)
             .NotEmpty().WithMessage("Los nombres son obligatorios.")
@@ -108,7 +109,7 @@ public class CrearVendedorCommandHandler : IRequestHandler<CrearVendedorCommand,
         var vendedor = new Usuario
         {
             Id = vendedorId,
-            Cedula = request.Cedula.Trim(),
+            Cedula = request.Cedula.Trim().ToUpperInvariant(),
             Nombres = request.Nombres.Trim(),
             Apellidos = request.Apellidos.Trim(),
             Celular = request.Celular?.Trim(),

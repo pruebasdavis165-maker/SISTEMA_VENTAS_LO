@@ -27,8 +27,8 @@ public class GeneradorSorteosDiariosHostedService : BackgroundService
                 using var scope = _serviceProvider.CreateScope();
                 var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-                var hoy = DateOnly.FromDateTime(DateTime.UtcNow);
-                _logger.LogInformation("Verificando sorteos automáticos para la fecha: {Fecha}", hoy);
+                var hoy = SistemaVentasLO.Domain.Common.NicaraguaDateTime.Today;
+                _logger.LogInformation("Verificando sorteos automáticos para la fecha de Nicaragua: {Fecha}", hoy);
 
                 await mediator.Send(new GenerarSorteosDiaCommand(hoy, null), stoppingToken);
             }

@@ -55,6 +55,19 @@ public class ObtenerSorteosQueryHandler : IRequestHandler<ObtenerSorteosQuery, L
             var permiteVenta = s.Estado == "ABIERTO" && ahora < ventanaBloqueo;
             var minutosRestantes = (int)Math.Max(0, (ventanaBloqueo - ahora).TotalMinutes);
 
+            var estadoEfectivo = s.Estado;
+            if (s.Estado != "LIQUIDADO" && s.Estado != "CANCELADO")
+            {
+                if (ahora >= s.HoraCierre)
+                {
+                    estadoEfectivo = "CERRADO_PENDIENTE_GANADOR";
+                }
+                else if (ahora >= ventanaBloqueo)
+                {
+                    estadoEfectivo = "BLOQUEADO_VENTA";
+                }
+            }
+
             return new SorteoDto(
                 s.Id,
                 s.Codigo,
@@ -64,7 +77,7 @@ public class ObtenerSorteosQueryHandler : IRequestHandler<ObtenerSorteosQuery, L
                 s.Zona?.Nombre,
                 s.HorarioConfiguracionId,
                 s.HorarioConfiguracion?.Nombre,
-                s.Estado,
+                estadoEfectivo,
                 s.NumeroGanador,
                 permiteVenta,
                 minutosRestantes,
